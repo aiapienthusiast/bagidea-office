@@ -4,6 +4,27 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [Unreleased]
+
+**Fixed**
+- **The office covered the desktop instead of being its wallpaper** (Windows 11
+  build 26200 after the 14 Oct 2026 update, reported 15 Oct). Two things lined
+  up: on this build Progman creates the WorkerW behind the icons as its own
+  *child*, beside the icon view, and a window put into Progman later lands on
+  top of its siblings; and when the office auto-starts at login, Explorer may
+  not have built the desktop yet, so the embed fell back to Progman itself —
+  the world ended up above the icons (or as a plain window over everything)
+  and the supervisor, which accepted Progman as a valid parent, left it there.
+  Now the shell waits for the desktop before embedding (the world stays
+  invisible meanwhile), asks Progman for a WorkerW a few times before settling,
+  validates the WorkerW it picks (never one of Explorer's tiny tray workers),
+  always sinks the world — and a Progman-child WorkerW — to the bottom of the
+  stack under the icon view, and treats a Progman parent as a state to leave:
+  every 2 s it re-sinks the world and moves it into a real WorkerW as soon as
+  one exists. Verified on the live desktop: the failure state, reproduced by
+  hand, is corrected within one tick. `tools/wallpaper.ps1` gets the same
+  bottom-of-stack rule. Needs the shell rebuilt (a release, or `bagidea update`).
+
 ## [1.9.0] — 🐦 A seventh channel: Feishu / Lark
 
 **Added**

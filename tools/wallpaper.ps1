@@ -31,6 +31,8 @@ public class WallpaperHelper {
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern IntPtr SetParent(IntPtr child, IntPtr parent);
+    [DllImport("user32.dll")]
+    public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int cy, uint flags);
 
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
@@ -102,6 +104,9 @@ $workerw = [WallpaperHelper]::FindWorkerW()
 if ($workerw -eq [IntPtr]::Zero) { Write-Error "WorkerW not found"; exit 1 }
 
 $null = [WallpaperHelper]::SetParent($hwnd, $workerw)
+# Under the icons: inside Progman (Win11 24H2+ layout) a reparented window lands on top of its siblings.
+$null = [WallpaperHelper]::SetWindowPos($hwnd, [IntPtr]1, 0, 0, 0, 0, 0x13)   # HWND_BOTTOM · NOSIZE|NOMOVE|NOACTIVATE
+$null = [WallpaperHelper]::SetWindowPos($workerw, [IntPtr]1, 0, 0, 0, 0, 0x13)
 $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 $null = [WallpaperHelper]::MoveWindow($hwnd, 0, 0, $b.Width, $b.Height, $true)
 

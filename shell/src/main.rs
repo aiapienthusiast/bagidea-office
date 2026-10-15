@@ -543,9 +543,9 @@ mod platform {
         EnumWindows, FindWindowExW, FindWindowW, GetAncestor, GetClassNameW, GetWindowLongW,
         GetWindowThreadProcessId, GetWindowRect, IsIconic, IsWindow,
         IsWindowVisible, SendMessageTimeoutW, SetLayeredWindowAttributes, SetParent,
-        SetWindowLongW, ShowWindow, SystemParametersInfoW, GA_PARENT, GWL_EXSTYLE,
-        LWA_ALPHA, SMTO_NORMAL, SPI_SETDESKWALLPAPER, SW_HIDE, SW_SHOW,
-        WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        SetWindowLongW, SetWindowPos, ShowWindow, SystemParametersInfoW, GA_PARENT, GWL_EXSTYLE,
+        HWND_BOTTOM, LWA_ALPHA, SMTO_NORMAL, SPI_SETDESKWALLPAPER, SWP_NOACTIVATE, SWP_NOMOVE,
+        SWP_NOSIZE, SW_HIDE, SW_SHOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
     };
     use std::io::Write;
 
@@ -820,18 +820,122 @@ mod platform {
     unsafe fn spawn_workerw() -> HWND {
         let progman_class = wide("Progman");
         let progman = FindWindowW(progman_class.as_ptr(), std::ptr::null());
-        let mut result: usize = 0;
-        SendMessageTimeoutW(progman, 0x052C, 0, 0, SMTO_NORMAL, 1000, &mut result);
-        let mut workerw: HWND = 0 as HWND;
-        EnumWindows(Some(find_workerw_cb), &mut workerw as *mut HWND as _);
-        if workerw == 0 as HWND {
-            let worker_class = wide("WorkerW");
-            workerw = FindWindowExW(progman, 0 as HWND, worker_class.as_ptr(), std::ptr::null());
-            if workerw == 0 as HWND {
-                workerw = progman;
+        if progman == 0 as HWND {
+            return 0 as HWND;   // no desktop yet (login race) — the caller waits, never embeds into nothing
+        }
+        // Progman creates the WorkerW asynchronously; right after login (or an
+        // Explorer restart) the first ask can come back empty. Ask a few times
+        // before settling for Progman itself.
+        for _ in 0..8 {
+            let mut result: usize = 0;
+            SendMessageTimeoutW(progman, 0x052C, 0, 0, SMTO_NORMAL, 1000, &mut result);
+            let w = find_desktop_workerw(progman);
+            if w != 0 as HWND {
+                return w;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+        progman
+    }
+
+    unsafe fn class_of(h: HWND) -> String {
+        let mut cls = [0u16; 32];
+        let n = GetClassNameW(h, cls.as_mut_ptr(), cls.len() as i32);
+        String::from_utf16_lossy(&cls[..n.max(0) as usize])
+    }
+
+    /// The WorkerW that sits behind the desktop icons — on either layout:
+    ///   • Win11 24H2+ (and the Oct-2026 26200 builds): a CHILD of Progman, beside
+    ///     the icon view (SHELLDLL_DefView) that also lives under Progman;
+    ///   • classic: the full-screen TOP-LEVEL WorkerW right below the WorkerW that
+    ///     hosts the icon view.
+    /// Explorer also keeps a handful of tiny invisible WorkerWs (tray thumbnails);
+    /// the size check keeps the classic path from ever picking one of those —
+    /// embedding into a 136×39 hidden window is how the world "vanished".
+    unsafe fn find_desktop_workerw(progman: HWND) -> HWND {
+        let worker_class = wide("WorkerW");
+        let child = FindWindowExW(progman, 0 as HWND, worker_class.as_ptr(), std::ptr::null());
+        if child != 0 as HWND && GetAncestor(child, GA_PARENT) == progman {
+            return child;
+        }
+        let mut top: HWND = 0 as HWND;
+        EnumWindows(Some(find_workerw_cb), &mut top as *mut HWND as _);
+        if top != 0 as HWND {
+            let mut rc = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            let _ = GetWindowRect(top, &mut rc);
+            if rc.right - rc.left >= 300 && rc.bottom - rc.top >= 300 {
+                return top;
             }
         }
-        workerw
+        0 as HWND
+    }
+
+    /// Explorer has built the desktop: Progman exists and hosts the icon view
+    /// (directly on 24H2+, or inside a top-level WorkerW on the classic layout).
+    /// At login the shell starts from the Run key BEFORE that happens; embedding
+    /// then fell back to Progman and the world landed ABOVE the icons — the
+    /// "it's not a wallpaper, it covers everything" report (2026-10-15).
+    unsafe fn desktop_ready() -> bool {
+        let progman_class = wide("Progman");
+        let progman = FindWindowW(progman_class.as_ptr(), std::ptr::null());
+        if progman == 0 as HWND {
+            return false;
+        }
+        let shell_class = wide("SHELLDLL_DefView");
+        if FindWindowExW(progman, 0 as HWND, shell_class.as_ptr(), std::ptr::null()) != 0 as HWND {
+            return true;
+        }
+        let mut host: HWND = 0 as HWND;
+        EnumWindows(Some(find_defview_host_cb), &mut host as *mut HWND as _);
+        host != 0 as HWND
+    }
+    unsafe extern "system" fn find_defview_host_cb(top: HWND, out: windows_sys::Win32::Foundation::LPARAM) -> i32 {
+        let shell_class = wide("SHELLDLL_DefView");
+        if FindWindowExW(top, 0 as HWND, shell_class.as_ptr(), std::ptr::null()) != 0 as HWND {
+            *(out as *mut HWND) = top;
+            return 0;
+        }
+        1
+    }
+    unsafe fn wait_for_desktop(max: std::time::Duration) -> bool {
+        let t0 = std::time::Instant::now();
+        while !desktop_ready() {
+            if t0.elapsed() >= max {
+                return false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        true
+    }
+
+    /// Keep the world UNDER the desktop icons. Inside Progman a window that is
+    /// created or reparented later lands ON TOP of its siblings — so a WorkerW
+    /// that Progman just made, or the world itself when it had to fall back to
+    /// Progman, covers the icon view. The bottom of the stack is always right
+    /// for a wallpaper. A top-level WorkerW (classic layout) is left alone: pushing
+    /// it under Progman would hide the world behind the plain wallpaper.
+    unsafe fn sink_below_icons(godot: HWND, parent: HWND) {
+        let flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE;
+        SetWindowPos(godot, HWND_BOTTOM, 0, 0, 0, 0, flags);
+        if parent != 0 as HWND && class_of(parent) == "WorkerW" {
+            let gp = GetAncestor(parent, GA_PARENT);
+            if gp != 0 as HWND && class_of(gp) == "Progman" {
+                SetWindowPos(parent, HWND_BOTTOM, 0, 0, 0, 0, flags);
+            }
+        }
+    }
+
+    /// Put the world into the desktop layer and under the icons. Returns the
+    /// parent it now has (a WorkerW, Progman as a last resort), or 0 when there
+    /// is no desktop at all yet.
+    unsafe fn embed_world(godot: HWND) -> HWND {
+        let parent = spawn_workerw();
+        if parent == 0 as HWND {
+            return 0 as HWND;
+        }
+        SetParent(godot, parent);
+        sink_below_icons(godot, parent);
+        parent
     }
 
     /// Is `h` one of the desktop-shell layers we embed into? A window we SetParent'd
@@ -843,9 +947,7 @@ mod platform {
         if h == 0 as HWND {
             return false;
         }
-        let mut cls = [0u16; 32];
-        let n = GetClassNameW(h, cls.as_mut_ptr(), cls.len() as i32);
-        let name = String::from_utf16_lossy(&cls[..n.max(0) as usize]);
+        let name = class_of(h);
         name == "WorkerW" || name == "Progman"
     }
 
@@ -1011,9 +1113,12 @@ mod platform {
         } else {
             std::thread::sleep(std::time::Duration::from_millis(300));
         }
+        // At login the Run key starts us before Explorer has built the desktop;
+        // the world keeps its empty region (invisible) until there is a desktop
+        // to go behind, instead of standing on top of everything.
+        wait_for_desktop(std::time::Duration::from_secs(if wait_ready { 120 } else { 15 }));
         SetWindowRgn(godot as _, 0 as _, 1);
-        let workerw = spawn_workerw();
-        SetParent(godot, workerw);
+        let workerw = embed_world(godot);
         // Detect how many monitors there really are and tell the daemon, so the
         // UI shows a display picker ONLY on multi-monitor (and lists the right
         // count). Writing monitors.txt also lets the daemon report it on connect.
@@ -1111,18 +1216,34 @@ mod platform {
                     // while GetAncestor returns the real SetParent target — WorkerW when
                     // embedded, the desktop (#32769) once Windows tears WorkerW down.
                     let parent = GetAncestor(godot, GA_PARENT);
+                    let on_progman = parent != 0 as HWND && IsWindow(parent) != 0 && class_of(parent) == "Progman";
                     let parent_ok = parent == cur_workerw
                         || (IsWindow(parent) != 0 && is_wallpaper_layer(parent));
-                    if parent_ok {
+                    if on_progman {
+                        // Fallback state (the desktop had no WorkerW when we embedded):
+                        // stay under the icons, and move into a real WorkerW as soon
+                        // as Progman offers one.
+                        orphan_streak = 0;
+                        SetWindowPos(godot, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                        let fresh = find_desktop_workerw(parent);
+                        if fresh != 0 as HWND && fresh != parent {
+                            SetParent(godot, fresh);
+                            sink_below_icons(godot, fresh);
+                            cur_workerw = fresh;
+                            if enum_monitors().len() > 1 {
+                                position_wallpaper(godot, fresh, &root);
+                            }
+                            dlog(format!("[t={tick}] LEFT PROGMAN → workerw={:p}", fresh as *const ()));
+                        }
+                    } else if parent_ok {
                         orphan_streak = 0;
                     } else {
                         // Debounce: require 2 consecutive misses (~4s) so a transient
                         // reparent race during a display-mode change can't cause churn.
                         orphan_streak += 1;
                         if orphan_streak >= 2 {
-                            let fresh = spawn_workerw();
+                            let fresh = embed_world(godot);
                             if fresh != 0 as HWND {
-                                SetParent(godot, fresh);
                                 cur_workerw = fresh;
                                 if enum_monitors().len() > 1 {
                                     position_wallpaper(godot, fresh, &root);
