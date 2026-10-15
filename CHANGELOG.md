@@ -4,7 +4,7 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
-## [Unreleased]
+## [1.9.1] — 🖼️ Under the icons again
 
 **Fixed**
 - **The office covered the desktop instead of being its wallpaper** (Windows 11
