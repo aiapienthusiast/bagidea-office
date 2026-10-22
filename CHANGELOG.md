@@ -4,7 +4,7 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
-## [Unreleased]
+## [1.9.2] — 🌐 The daemon speaks English
 
 **Fixed**
 - **🌐 The daemon's own voice is English everywhere** ([#67](https://github.com/bagidea/bagidea-office/issues/67)).
