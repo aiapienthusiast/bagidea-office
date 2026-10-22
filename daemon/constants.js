@@ -3,6 +3,25 @@ const path = require("path");
 const REPLAY_COUNT = 80;
 const MAX_STAFF = 18;
 
+// English descriptions — what goes into prompts. BUILTIN_TOOLS below is the
+// Thai-source UI copy the overlay translates at runtime (and shows as-is in Thai).
+const BUILTIN_TOOLS_EN = {
+  Read: "read a file / image / PDF",
+  Glob: "find files by name or pattern",
+  Grep: "search text/code inside files",
+  Edit: "edit an existing file",
+  Write: "create a new file / overwrite",
+  Bash: "run shell commands and programs",
+  WebSearch: "search the web",
+  WebFetch: "open and read a web page",
+  Task: "spawn a sub-agent for a sub-task",
+  TodoWrite: "keep and track a task list",
+  NotebookEdit: "edit a Jupyter notebook",
+  Skill: "run an assigned skill",
+  BashOutput: "read the output of a background job",
+  KillShell: "stop a background job",
+  SlashCommand: "run an installed slash command",
+};
 const BUILTIN_TOOLS = {
   Read: "อ่านไฟล์ / รูปภาพ / PDF",
   Glob: "ค้นหาไฟล์จากชื่อหรือแพทเทิร์น",
@@ -403,7 +422,7 @@ const DEFAULT_SKILLS = ["archive-search", "file-media-toolkit", "doc-writer", "s
 module.exports = {
   REPLAY_COUNT,
   MAX_STAFF,
-  BUILTIN_TOOLS,
+  BUILTIN_TOOLS, BUILTIN_TOOLS_EN,
   SKILL_LIBRARY,
   DEFAULT_SKILLS,
   DEFAULT_MAIN_AGENT,

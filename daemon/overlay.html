@@ -3007,7 +3007,7 @@
   // Permission requests become ACTIONABLE cards right in the stream — the
   // same broker answers, no mode-switch needed to unblock an agent.
   function addFeedPerm(ev) {
-    const d = addFeed(ev.agent, "🛡 ขอใช้ " + ev.tool, ev.session || "", "alert");
+    const d = addFeed(ev.agent, tr("🛡 ขอใช้") + " " + ev.tool, ev.session || "", "alert");
     d.id = "fperm-" + ev.perm;
     let inp = "";
     try { inp = JSON.stringify(JSON.parse(ev.input)); } catch { inp = String(ev.input || ""); }
@@ -3182,28 +3182,28 @@
     if (ev.type === "chat.message") addFeed(ev.sub || ev.agent, ev.text, sess, ev.sub ? "ghostly" : "");
     else if (ev.type === "task.progress") addFeed(ev.agent, "⚙ " + (ev.tool || "…"), sess);
     else if (ev.type === "subagent.progress") addFeed(ev.sub, "⚙ " + (ev.tool || "…"), sess, "ghostly");
-    else if (ev.type === "subagent.spawned") addFeed(ev.sub, "👻 แตกร่างรับงาน: " + String(ev.text || "").slice(0, 80), sess, "ghostly");
-    else if (ev.type === "subagent.done") addFeed(ev.sub, ev.ok ? "✓ งานเสร็จ กลับเข้าร่าง" : "✗ ล้มเหลว", sess, "ghostly");
+    else if (ev.type === "subagent.spawned") addFeed(ev.sub, tr("👻 แตกร่างรับงาน:") + " " + String(ev.text || "").slice(0, 80), sess, "ghostly");
+    else if (ev.type === "subagent.done") addFeed(ev.sub, ev.ok ? tr("✓ งานเสร็จ กลับเข้าร่าง") : tr("✗ ล้มเหลว"), sess, "ghostly");
     else if (ev.type === "perm.requested") addFeedPerm(ev);
     else if (ev.type === "perm.approved") {
-      if (!resolveFeedPerm(ev.perm, ev.via === "rule" ? "✓ อนุญาตอัตโนมัติ (ตามสิทธิ์ที่ให้ไว้)" : "✓ อนุญาตแล้ว", true))
+      if (!resolveFeedPerm(ev.perm, ev.via === "rule" ? tr("✓ อนุญาตอัตโนมัติ (ตามสิทธิ์ที่ให้ไว้)") : tr("✓ อนุญาตแล้ว"), true))
         addFeed(ev.agent, "🛡 " + ev.tool + " — allowed ✓", sess);
     } else if (ev.type === "perm.denied") {
-      if (!resolveFeedPerm(ev.perm, ev.via === "timeout" ? "✗ หมดเวลา — ปฏิเสธอัตโนมัติ" : "✗ ไม่อนุญาต", false))
+      if (!resolveFeedPerm(ev.perm, ev.via === "timeout" ? tr("✗ หมดเวลา — ปฏิเสธอัตโนมัติ") : tr("✗ ไม่อนุญาต"), false))
         addFeed(ev.agent, "🛡 " + ev.tool + " — denied ✗", sess);
     }
     else if (ev.type === "trust.requested")
-      addFeed(ev.agent || "main", "🛡 โปรเจค " + (ev.project || "") + " มี hook ของตัวเอง — รออนุมัติ", sess);
+      addFeed(ev.agent || "main", tr("🛡 โปรเจค %s มี hook ของตัวเอง — รออนุมัติ").replace("%s", ev.project || ""), sess);
     else if (ev.type === "trust.approved" || ev.type === "trust.denied")
-      addFeed("main", "🛡 โปรเจค " + (ev.project || "") +
-        (ev.type === "trust.approved" ? " — อนุมัติ hook แล้ว ✓" : " — ไม่อนุมัติ hook ✗"), sess);
-    else if (ev.type === "task.completed") addFeed(ev.agent, "✓ งานเสร็จ", sess);
-    else if (ev.type === "task.failed") addFeed(ev.agent, "✗ งานล้มเหลว", sess);
-    else if (ev.type === "task.delegated") addFeed("main", "📋 มอบหมายงานให้ " + nameOf(ev.target), sess);
-    else if (ev.type === "ceo.summon") addFeed("main", "👑 เข้ารับคำสั่งจาก CEO", sess);
-    else if (ev.type === "ceo.report") addFeed("main", "📨 ส่งสรุปงานให้ CEO", sess);
-    else if (ev.type === "collab.started") addFeed((ev.agents || ["main"])[0], "🤝 ประชุมเริ่ม: " + String(ev.text || ""), sess);
-    else if (ev.type === "skill.created") addFeed(ev.agent, "📚 เรียนรู้สกิลใหม่: " + ev.skill, sess);
+      addFeed("main", tr(ev.type === "trust.approved" ? "🛡 โปรเจค %s — อนุมัติ hook แล้ว ✓" : "🛡 โปรเจค %s — ไม่อนุมัติ hook ✗")
+        .replace("%s", ev.project || ""), sess);
+    else if (ev.type === "task.completed") addFeed(ev.agent, tr("✓ งานเสร็จ"), sess);
+    else if (ev.type === "task.failed") addFeed(ev.agent, tr("✗ งานล้มเหลว"), sess);
+    else if (ev.type === "task.delegated") addFeed("main", tr("📋 มอบหมายงานให้") + " " + nameOf(ev.target), sess);
+    else if (ev.type === "ceo.summon") addFeed("main", tr("👑 เข้ารับคำสั่งจาก CEO"), sess);
+    else if (ev.type === "ceo.report") addFeed("main", tr("📨 ส่งสรุปงานให้ CEO"), sess);
+    else if (ev.type === "collab.started") addFeed((ev.agents || ["main"])[0], tr("🤝 ประชุมเริ่ม:") + " " + String(ev.text || ""), sess);
+    else if (ev.type === "skill.created") addFeed(ev.agent, tr("📚 เรียนรู้สกิลใหม่:") + " " + ev.skill, sess);
     // Plugins changed anywhere (this window, another, the Hub, an agent) → keep the open
     // Plugins panel in sync so it never shows a stale installed/removed state.
     else if (ev.type === "plugins.changed") {
@@ -3234,7 +3234,7 @@
     else if (ev.type === "proposal.approved") markProposalResolved(ev.proposal, true);
     else if (ev.type === "proposal.rejected") markProposalResolved(ev.proposal, false);
     else if (ev.type === "memory.learned")
-      addFeed(ev.agent, "🧠 จดความจำใหม่ " + ev.count + " ข้อ", "");
+      addFeed(ev.agent, tr("🧠 จดความจำใหม่ %n ข้อ").replace("%n", ev.count), "");
     else if (ev.type === "plugin.intent" && ev.repo) {
       // A bagidea:// "install" deep link reached the office. Open the Plugins Hub
       // window pre-loaded with this repo for a CONFIRM-then-install — never silent.
@@ -7490,9 +7490,9 @@
     const gname = `${nameOf(pid)} · ${tag}`;
     if (ev.replay) return;
     if (ev.type === "subagent.spawned")
-      addLog(`👻 <b>${gname}</b> แตกร่างขึ้น Ghost Deck — ${String(ev.text || "").slice(0, 60)}`);
+      addLog(`👻 <b>${gname}</b> ${tr("แตกร่างขึ้น Ghost Deck —")} ${String(ev.text || "").slice(0, 60)}`);
     else if (ev.type === "subagent.done")
-      addLog(`👻 <b>${gname}</b> ${ev.ok ? "งานเสร็จ ✓ กลับเข้าร่าง" : "ล้มเหลว ✗ กลับเข้าร่าง"}`);
+      addLog(`👻 <b>${gname}</b> ${tr(ev.ok ? "งานเสร็จ ✓ กลับเข้าร่าง" : "ล้มเหลว ✗ กลับเข้าร่าง")}`);
     else if (ev.type === "subagent.progress") {
       addLog(`⚙ <b>${ev.tool || "…"}</b> — 👻 ${gname}`);
       devLogEvent("subagent.progress", `Tool: ${ev.tool || "…"}`, `Agent: ${gname}`);
@@ -7645,7 +7645,7 @@
           } catch {}
         }, 45000);
       };
-      addFeed("main", "🔄 มีเวอร์ชันใหม่ " + (ver ? "v" + ver : "") + " — อัปเดตได้จากแถบในหน้าแชท หรือ `bagidea update`", "");
+      addFeed("main", tr("🔄 มีเวอร์ชันใหม่ %s — อัปเดตได้จากแถบในหน้าแชท หรือ `bagidea update`").replace("%s", ver ? "v" + ver : ""), "");
       return;
     }
     if (ev.type === "ui.daylight") {
@@ -7667,7 +7667,7 @@
     const subId = ev.sub || (ev.agent && String(ev.agent).includes("#") ? ev.agent : null);
     if (subId) return routeSub(ev, subId);
     if (ev.type === "subagent.split") {
-      if (!ev.replay) addLog(`👻 <b>${nameOf(ev.agent)}</b> แตกร่าง ${ev.count} sub-agents → Ghost Deck`);
+      if (!ev.replay) addLog(`👻 <b>${nameOf(ev.agent)}</b> ${tr("แตกร่าง %n sub-agents → Ghost Deck").replace("%n", ev.count)}`);
       return;
     }
     if (ev.agent) ensureAgent(ev.agent);
@@ -7807,16 +7807,16 @@
       }
     }
     else if (ev.type === "job.started") {
-      if (!ev.replay) addLog(`📋 เริ่มงานที่สั่งไว้: <b>${esc(String(ev.title || ""))}</b> — ${nameOf(ev.agent)}`);
+      if (!ev.replay) addLog(`${tr("📋 เริ่มงานที่สั่งไว้:")} <b>${esc(String(ev.title || ""))}</b> — ${nameOf(ev.agent)}`);
     }
     else if (ev.type === "notes.changed") {
-      if (!ev.replay && ev.by === "agent") addLog(`📝 มี agent เขียนโน้ตบนกระดาน (${ev.count} ข้อ)`);
+      if (!ev.replay && ev.by === "agent") addLog(tr("📝 มี agent เขียนโน้ตบนกระดาน (%n ข้อ)").replace("%n", ev.count));
     }
     else if (ev.type === "collab.started") {
-      if (!ev.replay) addLog(`🤝 ประชุมเริ่ม — ${(ev.agents || []).map(nameOf).join(", ")}`);
+      if (!ev.replay) addLog(`${tr("🤝 ประชุมเริ่ม —")} ${(ev.agents || []).map(nameOf).join(", ")}`);
     }
     else if (ev.type === "collab.ended") {
-      if (!ev.replay) addLog(`🤝 ประชุมจบ`);
+      if (!ev.replay) addLog(tr("🤝 ประชุมจบ"));
     }
     else if (ev.type === "meeting.live") {
       // A meeting just went live. Track it so the speak bar can show when the

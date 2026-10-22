@@ -22,6 +22,7 @@ const {
   REPLAY_COUNT,
   MAX_STAFF,
   BUILTIN_TOOLS,
+  BUILTIN_TOOLS_EN,
   SKILL_LIBRARY,
   DEFAULT_MAIN_AGENT,
   DEFAULT_CEO_AGENT
@@ -245,7 +246,7 @@ function buildWorkflowFromSteps(name, steps) {
   const nodes = [], edges = [];
   let i = 1, y = 40; const x = 80;
   const push = (type, text) => { const id = "n" + (i++); nodes.push({ id, type, text: String(text).slice(0, 300), x, y }); y += 150; return id; };
-  let prev = push("trigger", "เมื่อสั่งให้เริ่ม");
+  let prev = push("trigger", "When told to start");
   clean.forEach((s) => { const id = push("action", s); edges.push({ from: prev, to: id }); prev = id; });
   return { name: String(name || "Workflow").slice(0, 60), nodes, edges };
 }
@@ -274,14 +275,14 @@ function harvestWorkflows(text) {
 }
 
 const WORKFLOW_ANALYZE_PROMPT = [
-  "ผู้ใช้วาง workflow เป็นภาษามนุษย์ (ลำดับ node) ด้านล่าง. ในฐานะ Director ให้วิเคราะห์",
-  "ว่าจะทำให้เกิดจริงได้ยังไง — อย่าลงมือทำตอนนี้ แค่วางแผน. ตอบเป็นหัวข้อ กระชับ",
-  "อ่านง่าย ภาษาเดียวกับผู้ใช้:",
-  "1) สรุป 1-2 บรรทัดว่า workflow นี้ทำอะไร",
-  "2) แต่ละขั้นต้องใช้ skill/tool ไหน (เช่น WebSearch, Bash, Write) — ถ้ายังไม่มี skill ที่เหมาะ บอกว่าควรสร้าง skill ชื่ออะไร ทำอะไร",
-  "3) ต้องเปิด permission/tool อะไรเพิ่มให้ agent ไหม",
-  "4) ควรมอบหมายให้ agent คนไหน หรือควรจ้าง agent ใหม่ (หน้าที่อะไร)",
-  "5) คำถาม/ช่องโหว่ที่ผู้ใช้ต้องตัดสินใจก่อนรันจริง",
+  "The user has laid out a workflow in plain language (an ordered list of nodes) below. As the Director,",
+  "analyse how to make it real — do not execute anything now, only plan. Answer as short,",
+  "easy-to-read bullet points, in the user's language:",
+  "1) A 1–2 line summary of what this workflow does",
+  "2) Which skill/tool each step needs (e.g. WebSearch, Bash, Write) — if no suitable skill exists yet, say what skill should be created and what it would do",
+  "3) Whether any extra permission/tool must be enabled for an agent",
+  "4) Which agent should own it, or whether a new agent should be hired (and for what role)",
+  "5) Questions / gaps the user must decide before running it for real",
 ].join("\n");
 
 // Which program features the MAIN keys currently unlock — booleans only,
@@ -833,14 +834,14 @@ function claudeAuthHeaders() {
 }
 async function fetchClaudeModels(signal) {
   const h = claudeAuthHeaders();
-  if (!h) return { ok: false, msg: "ยังไม่มี Claude API key / login ให้ดึงรายชื่อโมเดล" };
+  if (!h) return { ok: false, msg: "no Claude API key / login yet to list models with" };
   const url = (providers.PROVIDERS.claude || {}).modelsUrl || "https://api.anthropic.com/v1/models?limit=100";
   const r = await fetch(url, { headers: h, signal });
-  if (!r.ok) return { ok: false, msg: "Anthropic ตอบ HTTP " + r.status };
+  if (!r.ok) return { ok: false, msg: "Anthropic answered HTTP " + r.status };
   const j = await r.json();
   // The API returns newest-first, which is exactly the picker order we want.
   const models = proxy.cleanModels((j.data || []).map((m) => m.id));
-  return models.length ? { ok: true, models } : { ok: false, msg: "รายชื่อว่าง" };
+  return models.length ? { ok: true, models } : { ok: false, msg: "empty list" };
 }
 // Pull ONE provider's live list and cache it on reg.providerConfig[id].models.
 // Used by the ↻ buttons and by the boot + 12h sweep, so a model that shipped
@@ -865,18 +866,18 @@ async function refreshProviderModels(id) {
       const r = await fetchClaudeModels(signal);
       return r.ok ? store(r.models) : fail(r.msg);
     }
-    if (!kind) return fail("ไม่รู้จัก provider นี้");
+    if (!kind) return fail("unknown provider");
     let murl, headers;
     if (kind === "openai") {
       const up = proxy.upstreamFor(id, reg);
       murl = up && up.models;
-      if (!murl) return fail("ไม่พบ endpoint");
-      if (!up.key && !(spec && spec.local)) return fail("ยังไม่ได้วาง key");
+      if (!murl) return fail("no endpoint found");
+      if (!up.key && !(spec && spec.local)) return fail("no key set yet");
       headers = up.key ? { authorization: "Bearer " + up.key } : {};
     } else {
       murl = pc.modelsUrl || (spec && spec.modelsUrl);
-      if (!murl) return fail("provider นี้ไม่มี /models ให้ดึง");
-      if (!pc.token) return fail("ยังไม่ได้วาง key");
+      if (!murl) return fail("this provider has no /models endpoint");
+      if (!pc.token) return fail("no key set yet");
       headers = { authorization: "Bearer " + pc.token };
     }
     const r = await fetch(murl, { headers, signal });
@@ -884,7 +885,7 @@ async function refreshProviderModels(id) {
     const j = await r.json();
     captureModelCtx(id, j.data);
     const models = proxy.cleanModels((j.data || []).map((m) => m.id)).slice(0, 300);
-    return models.length ? store(models) : fail("รายชื่อว่าง");
+    return models.length ? store(models) : fail("empty list");
   } catch (e) { return fail(String((e && e.message) || e)); }
 }
 // Claude + every connected provider. Serial on purpose: a handful of GETs, no rush.
@@ -943,7 +944,7 @@ function claudeText(prompt, opts = {}) {
     if (opts.track && opts.track.agent) {
       tid = "t" + ++taskCounter;
       broadcast({ type: "task.started", agent: opts.track.agent, task: tid,
-        title: String(opts.track.title || "งาน").replace(/\s+/g, " ").slice(0, 90) });
+        title: String(opts.track.title || "task").replace(/\s+/g, " ").slice(0, 90) });
     }
     const endTask = (ok) => {
       if (!tid) return;
@@ -1160,7 +1161,7 @@ function memAppend(agent, facts) {
     .map((f) => String(f).replace(/\s+/g, " ").trim().slice(0, 200))
     .filter((f) => f && !cur.includes(f));
   if (!fresh.length) return;
-  if (!cur) cur = `# ความจำของ ${agent}\n\n`;
+  if (!cur) cur = `# Memory of ${agent}\n\n`;
   fs.appendFileSync(file, fresh.map((f) => `- ${f}`).join("\n") + "\n");
   // Keep the retrieval index in step with the new facts (no-op until P1 init).
   try { if (retrievalOk) { retrieval.reindexFile("mem", path.basename(file, ".md"), file); retrieval.persist(); } } catch {}
@@ -1276,11 +1277,11 @@ function cleanForQuery(text) {
 function memoryNote(agent, taskText, projId, qvec) {
   const memRef = path.basename(memFile(agent), ".md");
   const header = `\n<office-memory>\n` +
-    `ข้อมูลกลางออฟฟิศ: workspace/OFFICE.md (เปิดอ่านเฉพาะเมื่อเกี่ยวกับงาน)\n` +
-    `สมุดความจำถาวรของคุณ: workspace/memory/${memRef}.md ` +
-    `— พบข้อเท็จจริงสำคัญเกี่ยวกับเจ้าของ/งานที่ควรจำข้ามบทสนทนา ให้เติมบรรทัด "- ..." สั้นๆ เอง\n` +
-    (projId ? `ความจำของโปรเจคนี้: ${projMemFile(projId).replace(WORKSPACE + path.sep, "")}\n` : "") +
-    `ค้นความจำเก่าทั้งหมดได้ที่ GET /recall?q=<คำค้น> (skill: archive-search)\n`;
+    `Shared office knowledge: workspace/OFFICE.md (read it only when it concerns the work)\n` +
+    `Your permanent memory notebook: workspace/memory/${memRef}.md ` +
+    `— when you learn an important fact about the owner or the work that should survive this conversation, append a short "- ..." line yourself\n` +
+    (projId ? `This project's memory: ${projMemFile(projId).replace(WORKSPACE + path.sep, "")}\n` : "") +
+    `Search all past memory at GET /recall?q=<query> (skill: archive-search)\n`;
   let recall = "";
   const q = cleanForQuery(taskText);
   if (retrievalOk && reg.retrieval !== false && q) {
@@ -1296,12 +1297,12 @@ function memoryNote(agent, taskText, projId, qvec) {
         if (used + t.length > 1500) break;
         lines.push(`- ${t}`); used += t.length;
       }
-      if (lines.length) recall = `ความจำที่เกี่ยวกับงานนี้:\n${lines.join("\n")}\n`;
+      if (lines.length) recall = `Memory relevant to this task:\n${lines.join("\n")}\n`;
     } catch { /* fall through to the tail */ }
   }
   if (!recall) {
     const tail = memTail(agent, 8);
-    if (tail.length) recall = `ความจำล่าสุดของคุณ:\n${tail.join("\n")}\n`;
+    if (tail.length) recall = `Your latest memory:\n${tail.join("\n")}\n`;
   }
   return header + recall + `</office-memory>\n`;
 }
@@ -1407,7 +1408,7 @@ const calendar = require("./calendar")({
       `${new Date(occ.at).toLocaleString()} (in about ${Math.max(1, occ.minutes)} minutes)` +
       (ev.notes ? `. Notes: ${String(ev.notes).slice(0, 300)}` : "") +
       `. Write a short, friendly reminder of 1–2 sentences, in the office language.` + officeLangNote(),
-      { noSub: true, logPrompt: `🔔 เตือนนัด: ${ev.title}` });
+      { noSub: true, logPrompt: `🔔 Reminder: ${ev.title}` });
   },
 });
 // Clean up one-shot jobs that already fired (no `running` survives a restart) —
@@ -1429,8 +1430,8 @@ let writingNotesMd = false;
 function saveNotes() {
   fs.writeFileSync(NOTES, JSON.stringify(notes, null, 2));
   writingNotesMd = true;
-  const md = "# Office Notes — กระดานโน้ตกลาง\n" +
-    "(agents: อ่านได้ และเพิ่มบรรทัด \"- ข้อความ\" เพื่อฝากโน้ตถึง CEO ได้เลย)\n\n" +
+  const md = "# Office Notes — the shared note board\n" +
+    "(agents: you may read this, and append a line \"- text\" to leave a note for the CEO)\n\n" +
     notes.map((n) => `- ${n.text}`).join("\n") + "\n";
   fs.writeFileSync(NOTES_MD, md);
   setTimeout(() => { writingNotesMd = false; }, 1500);
@@ -1749,11 +1750,11 @@ function createProject(name, place, pathArg) {
     return String(s).replace(/\/+$/, "").toLowerCase();
   };
   if (projects.some((x) => norm(x.dir) === norm(dir)))
-    throw new Error("โปรเจคนี้อยู่ในรายการแล้ว (path ซ้ำ)");
+    throw new Error("this project is already registered (same path)");
   if (projects.some((x) => x.name.toLowerCase() === name.toLowerCase()))
-    throw new Error("มีโปรเจคชื่อนี้อยู่แล้ว — ห้ามลงทะเบียนซ้ำ");
+    throw new Error("a project with this name already exists — not registering it twice");
   if (Object.values(reg.places).some((f) => norm(f) === norm(dir)))
-    throw new Error("path นี้คือโฟลเดอร์ของ place — โปรเจคต้องเป็นโฟลเดอร์ย่อยข้างใน");
+    throw new Error("this path is a place's own folder — a project must be a subfolder inside it");
   const existed = fs.existsSync(dir);
   fs.mkdirSync(dir, { recursive: true });
   // Registering an EXISTING folder is the moment consent is really being asked for
@@ -1912,7 +1913,7 @@ function dispatchJob(job) {
     director, directorNote: director ? directorNote() : "", autoNote: autoNote() });
   runClaude(job.agent, text, {
     session: job.sessionKey || "new",
-    logPrompt: "📋 [งานที่สั่งไว้] " + job.prompt,
+    logPrompt: "📋 [scheduled job] " + job.prompt,
     // Built at filter time, not now: a first firing has no thread yet, and the
     // report-back must resume the thread this job actually ran on (onEntry has
     // filled keyRef by then) so the Director answers with his own order in view.
@@ -2068,7 +2069,7 @@ function heartbeat() {
     `If there is something the CEO should know right now (an appointment coming up, work that stalled, ` +
     `an overdue card, a note worth seeing), write a short, easy-to-read message in the office language. ` +
     `If everything is in order and nothing needs their attention, answer with the single word OK.` + officeLangNote(),
-    { noSub: true, logPrompt: "💓 รอบตรวจความเรียบร้อย",
+    { noSub: true, logPrompt: "💓 routine check",
       filterText: (t) => (/^\s*OK\.?\s*$/i.test(t) ? "" : t) });
 }
 
@@ -2083,7 +2084,7 @@ function resumePausedTick(now) {
     if (w.tries >= RESUME_MAX_TRIES) {
       pauseClear(w.key);
       broadcast({ type: "chat.message", agent: w.agent || "main",
-        text: "⏹ พยายามทำงานต่อหลายครั้งแล้วยังติดลิมิตอยู่ — ขอพักงานนี้ไว้ก่อนนะครับ (สั่งใหม่ได้ทุกเมื่อ)" });
+        text: "⏹ Tried to resume several times and still hit the limit — parking this task for now (order it again any time)" });
       continue;
     }
     // Backoff: 5, 10, 20, 40 min between attempts (ts=0 on a restart ⇒ try right away).
@@ -2092,12 +2093,12 @@ function resumePausedTick(now) {
     if (agentRunning(w.agent)) continue;   // don't pile onto an agent already busy
     w.tries++; w.state = "active"; w.ts = now; savePaused();
     broadcast({ type: "chat.message", agent: w.agent,
-      text: "▶ โควต้าน่าจะคืนแล้ว — ขอทำงานที่ค้างไว้ต่อจากเดิมนะครับ" });
+      text: "▶ The quota should be back — picking up the unfinished work where it left off" });
     runClaude(w.agent,
       "Continue the work that was left unfinished (it was interrupted by a temporary limit or a restart of the program). " +
       "Read the context in this thread and finish what is not yet done:\n\n" + String(w.prompt || ""),
       { session: w.key, project: w.project, resumable: true, _tries: w.tries,
-        resumePrompt: w.prompt, logPrompt: "▶ ทำงานต่อ (resume)",
+        resumePrompt: w.prompt, logPrompt: "▶ resume",
         // Same defect as the job runner had: a resumed Director turn that hands
         // work back out needs its DELEGATE lines parsed, or the work it just
         // dispatched is printed as prose and silently lost.
@@ -2259,12 +2260,12 @@ function runClaude(agent, prompt, opts = {}) {
   if (projId && !ensureTrusted(cwd, { agent, project: projId })) {
     const name = (projects.find((p) => p.id === projId) || {}).name || projId;
     broadcast({ type: "chat.message", agent, session: entry.key,
-      text: `🛡 โปรเจค “${name}” มี hook ของตัวเองที่จะรันอัตโนมัติเมื่อเปิดงาน — ` +
-        `รออนุมัติในศูนย์ความปลอดภัยก่อน แล้วผมจะทำงานนี้ต่อให้เองครับ` });
+      text: `🛡 Project “${name}” ships its own hooks that run automatically when work starts — ` +
+        `waiting for your approval in the Security Center, then I'll continue this task myself` });
     waitForTrust(cwd, (denied) => {
       if (denied === null) {
         broadcast({ type: "chat.message", agent, session: entry.key,
-          text: `🛡 ไม่อนุมัติ hook ของโปรเจค “${name}” — งานนี้ยกเลิก (โปรเจคยังไม่ถูกเปิดใช้)` });
+          text: `🛡 The hooks of project “${name}” were not approved — this task is cancelled (the project stays disabled)` });
         return;
       }
       runClaude(agent, prompt, optsIn);
@@ -2676,7 +2677,7 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
       else if (isRateLimit(`${text || ""}\n${errText}\n${lastText}`)) {
         pausePause(agent, opts.resumePrompt || prompt, projId, entry.key);
         broadcast({ type: "chat.message", agent, task,
-          text: "⏸ ติดลิมิต (rate/usage) ชั่วคราว — พักงานไว้ก่อน เดี๋ยวจะทำต่อให้อัตโนมัติเมื่อโควต้าคืน" });
+          text: "⏸ Hit a temporary limit (rate/usage) — parking the work; it resumes automatically once the quota is back" });
       } else pauseClear(entry.key);
     }
     if (opts.onDone) try { opts.onDone(text, ok); } catch (e) { console.error("[onDone]", e); }
@@ -2724,9 +2725,9 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
     broadcast({ type: "task.completed", agent, task, session: entry.key }); // clear the stalled row
     const an = (reg.agents[agent] || {}).name || agent;
     const toTag = fb.model ? fb.provider + "/" + fb.model : fb.provider;
-    const why = st === 429 ? "ติดลิมิต (rate/usage) ต่อเนื่อง" : "โดน overload ต่อเนื่อง";
+    const why = st === 429 ? "keeps hitting the limit (rate/usage)" : "keeps being overloaded";
     broadcast({ type: "chat.message", agent, task, session: entry.key, model: mtag,
-      text: `🛟 สมองของ ${an} (${mtag}) ${why} — สลับไปสมองสำรอง ${toTag} ให้ชั่วคราว แล้วทำงานเดิมต่อ (ปรับได้ในการตั้งค่า)` });
+      text: `🛟 ${an}'s brain (${mtag}) ${why} — switching to the fallback brain ${toTag} for now and continuing the same task (configurable in settings)` });
     // Re-run the SAME task on the fallback brain. Fresh thread (the down brain can't be
     // summarized through); onDone rides along so a delegation still reports back normally.
     runClaude(agent, prompt, { ...opts, session: "new", _brainOverride: fb, _failedOver: true });
@@ -2758,15 +2759,14 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
           const dead = (st === null || st === undefined) && apiRetries >= 2;  // endpoint not responding
           if (permanent || dead) {
             brainDead = true;
-            const why = st === 401 ? "API key ผิด/หมดอายุ (401)"
-              : st === 403 ? "ไม่ได้รับอนุญาต (403)"
-              : "endpoint ไม่ตอบ (น่าจะ down หรือไม่น่าจะกลับมา)";
+            const why = st === 401 ? "the API key is wrong or expired (401)"
+              : st === 403 ? "the key is not permitted (403)"
+              : "the endpoint is not responding (probably down, unlikely to come back)";
             const an = (reg.agents[agent] || {}).name || agent;
-            const whyEn = st === 401 ? "the API key is wrong or expired (401)" : st === 403 ? "the key is not permitted (403)" : "the endpoint is not responding";
-            abnormalEnd(`the brain ${mtag} could not answer — ${whyEn}; the run was stopped instead of retrying blind`);
+            abnormalEnd(`the brain ${mtag} could not answer — ${why}; the run was stopped instead of retrying blind`);
             broadcast({ type: "chat.message", agent, task, session: entry.key, model: mtag,
-              text: `⚠️ สมองของ ${an} (${mtag}) ใช้งานไม่ได้ — ${why}.\n` +
-                `ตรวจ key/ตั้งค่าใน 🧠 BRAIN ของคุณคนนี้ (หรือเปลี่ยนสมอง) แล้วสั่งใหม่ — ไม่ต้องรอ retry ครบ 10 รอบ` });
+              text: `⚠️ ${an}'s brain (${mtag}) is unusable — ${why}.\n` +
+                `Check the key/settings in this agent's 🧠 BRAIN (or switch brains) and order again — no need to wait for 10 retries` });
             try { killTree(child); } catch (e) { /* best-effort */ }
           } else {
             // 529/503 (transient overload): if the owner opted in to a fallback brain and
@@ -2839,7 +2839,7 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
               if (found.length) {
                 subTasks.push(...found);
                 raw = (kept.join("\n").trim() +
-                  `\n\n👻 แตกร่าง ${found.length} sub-agents:\n` +
+                  `\n\n👻 Spawned ${found.length} sub-agents:\n` +
                   found.map((t, i) => `${i + 1}. ${t.slice(0, 80)}`).join("\n")).trim();
               }
             }
@@ -2850,7 +2850,7 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
               const hw = harvestWorkflows(out);
               out = hw.text;
               if (hw.created.length)
-                out = (out + "\n\n🔀 บันทึก workflow ลง Builder แล้ว: " +
+                out = (out + "\n\n🔀 Saved to the workflow Builder: " +
                   hw.created.map((w) => w.name).join(", ")).trim();
             }
             if (out && !opts._recovered && isOverflowError(out)) {
@@ -2939,9 +2939,9 @@ async function summarizeThread(oldEntry, agent) {
     if (!hist.trim()) return "";
     const a = reg.agents && reg.agents[agent];
     return await claudeText(
-      `สรุปบทสนทนาในออฟฟิศนี้ให้เพื่อนร่วมงานอ่านแล้วทำงานต่อได้ทันที: ข้อเท็จจริงสำคัญ ` +
-      `การตัดสินใจ งานที่ค้างอยู่ และสิ่งที่ต้องทำต่อ. ตอบเป็นภาษาเดียวกับบทสนทนา ` +
-      `กระชับ ≤200 คำ ไม่ต้องเกริ่นนำ.\n\n${hist}`,
+      `Summarize this office conversation so a colleague can read it and continue the work at once: ` +
+      `key facts, decisions, open tasks and what to do next. Answer in the language of the conversation, ` +
+      `concise, ≤200 words, no preamble.\n\n${hist}`,
       { provider: a && a.provider, model: a && a.model });
   } catch { return ""; }
 }
@@ -2949,7 +2949,7 @@ async function summarizeThread(oldEntry, agent) {
 function brainLabel(agent) {
   const a = (reg.agents && reg.agents[agent]) || {};
   return a.provider && a.provider !== "claude"
-    ? a.provider + (a.model ? "/" + a.model : "") : "โมเดลที่เลือก";
+    ? a.provider + (a.model ? "/" + a.model : "") : "the selected model";
 }
 
 // Restart a task on a FRESH thread seeded with a Claude-made summary of the old one,
@@ -2985,15 +2985,15 @@ async function restartOnFreshThread(agent, prompt, opts, oldEntry, notice, flag)
 // user's task runs without ever hitting the limit. Claude-Code-style, for any model.
 function compactThenRun(agent, prompt, opts, oldEntry) {
   return restartOnFreshThread(agent, prompt, opts, oldEntry,
-    `🧠 บทสนทนายาวขึ้น — สรุปใจความเดิม (auto-compact) แล้วทำงานต่อใน thread ใหม่นี้ ` +
-    `เพื่อให้ ${brainLabel(agent)} ไหว`, "_compacted");
+    `🧠 The conversation grew long — summarized it (auto-compact) and continuing in this new thread ` +
+    `so ${brainLabel(agent)} can keep up`, "_compacted");
 }
 
 // REACTIVE recovery (see maybeRecover): the backend already rejected the request as
 // too big (overflow or rate/TPM). Same summarize → fresh-thread restart, one attempt.
 function autoRecoverOverflow(agent, prompt, opts, oldEntry) {
   return restartOnFreshThread(agent, prompt, opts, oldEntry,
-    `⚠ ${brainLabel(agent)} รับ context เต็มไม่ไหว — สรุปใจความเดิมแล้วย้ายมาทำงานต่อใน thread ใหม่นี้ให้อัตโนมัติ`,
+    `⚠ ${brainLabel(agent)} could not take the full context — summarized it and moved the work to this new thread automatically`,
     "_recovered");
 }
 
@@ -3229,13 +3229,13 @@ function autoContinue(agent, project, keyRef, next, isDirector, dele) {
     if (n > AUTOPILOT_MAX) {
       autoRounds.delete(key);
       broadcast({ type: "chat.message", agent, session: key,
-        text: `🤖 AUTO: ${an} ทำต่อเองครบ ${AUTOPILOT_MAX} รอบแล้วแต่งานยังไม่จบ — ` +
-          `หยุดไว้ตรงนี้ก่อนกันวนไม่จบ สั่ง "ทำต่อ" ได้เลยครับ` });
+        text: `🤖 AUTO: ${an} carried on alone for ${AUTOPILOT_MAX} rounds and the work is still not done — ` +
+          `stopping here so it can't loop forever; say "continue" to go on` });
       return;
     }
     autoRounds.set(key, n);
     broadcast({ type: "chat.message", agent, session: key,
-      text: `🤖 AUTO — ไม่รอเจ้าของ: ทำต่อเอง (รอบ ${n}/${AUTOPILOT_MAX})` });
+      text: `🤖 AUTO — not waiting for the owner: carrying on (round ${n}/${AUTOPILOT_MAX})` });
     const cont =
       `Carry on with the outstanding work now — the owner is away, don't wait for an answer.\n` +
       (st && st.note ? `The next step you named yourself: ${st.note}\n` : "") +
@@ -3246,7 +3246,7 @@ function autoContinue(agent, project, keyRef, next, isDirector, dele) {
       const df = isDirector ? makeDelegateFilter(0, key, () => { d2.hit = true; }) : null;
       runClaude(agent, cont, {
         session: key || undefined, project,
-        logPrompt: `🤖 AUTO: ทำต่อเอง (รอบ ${n}/${AUTOPILOT_MAX})`,
+        logPrompt: `🤖 AUTO: carrying on (round ${n}/${AUTOPILOT_MAX})`,
         filterText: df ? (t) => stripStatus(df(t)) : (t) => stripStatus(t),
         onEntry: (k) => { keyRef.key = k; },
         onDone: autoContinue(agent, project, keyRef, undefined, isDirector, d2),
@@ -3278,11 +3278,11 @@ function makeDelegateFilter(depth, session, onHit) {
         try {
           const proj = reg.places[loc] ? createProject(nm, loc, "")
             : createProject(nm, "", loc);
-          keep.push(`📁 สร้างโปรเจค "${proj.name}" แล้ว → ${proj.dir}`);
+          keep.push(`📁 Created project "${proj.name}" → ${proj.dir}`);
         } catch (e) {
           // Already registered = fine (idempotent for routing); real errors show.
-          if (projectByName(nm)) keep.push(`📁 โปรเจค "${nm}" มีอยู่แล้ว — ใช้ตัวเดิม`);
-          else keep.push(`📁⚠️ สร้างโปรเจค "${nm}" ไม่สำเร็จ: ${e.message}`);
+          if (projectByName(nm)) keep.push(`📁 Project "${nm}" already exists — using it`);
+          else keep.push(`📁⚠️ Could not create project "${nm}": ${e.message}`);
         }
         continue;
       }
@@ -3394,7 +3394,7 @@ function verifyThenReport(fromId, task, out, ok, depth, session, proj) {
     `Be skeptical but fair — only raise concrete problems, not style nitpicks.`;
   runClaude(fromId, reviewPrompt, {
     project: proj, session: "new", noSub: true,
-    logPrompt: `🔍 ตรวจงานของ ${a.name} ก่อนส่ง CEO`,
+    logPrompt: `🔍 Reviewing ${a.name}'s work before it goes to the CEO`,
     onDone: (verdict, vok) => {
       const txt = String(verdict || "");
       const flagged = vok && /(^|\n)\s*ISSUES\s*:/i.test(txt) && !/^\s*APPROVED\s*$/im.test(txt);
@@ -3406,9 +3406,9 @@ function verifyThenReport(fromId, task, out, ok, depth, session, proj) {
         `"""${txt.slice(0, 3000)}"""\n\nFix them now, then give your updated result.`;
       runClaude(fromId, fixPrompt, {
         project: proj, session: workSess, noSub: true,
-        logPrompt: `🛠 ${a.name} แก้งานตามรีวิว`,
+        logPrompt: `🛠 ${a.name} fixes the work per review`,
         onDone: (out2, ok2) =>
-          reportToMain(fromId, `${out2}\n\n(ตรวจแล้ว + แก้ตามรีวิว)`, ok2, depth, session),
+          reportToMain(fromId, `${out2}\n\n(reviewed + fixed per review)`, ok2, depth, session),
       });
     },
   });
@@ -3435,7 +3435,7 @@ function reportToMain(fromId, text, ok, depth, session) {
     runClaude("main", wrapped + autoNote(), {
       session,
       noSub: true,
-      logPrompt: `📨 รายงานผลจาก ${a.name}`,
+      logPrompt: `📨 Report from ${a.name}`,
       filterText: df ? (t) => stripStatus(df(t)) : (t) => stripStatus(t),
       onEntry: (k) => { keyRef.key = k; },
       // 🤖 AUTO hooks the summary turn: this is where the office used to go quiet
@@ -3493,19 +3493,19 @@ function runSubAgents(parentId, parentEntry, tasks, onDone) {
     // Every ghost failed → nothing to synthesize. Don't burn a synthesis call;
     // hand the failure straight back so the Director can re-plan.
     if (!okResults.length) {
-      if (onDone) try { onDone("(ทุก sub-agent ทำงานไม่สำเร็จ)", false); } catch {}
+      if (onDone) try { onDone("(every sub-agent failed)", false); } catch {}
       return;
     }
     const failed = results.length - okResults.length;
     // Feed only the succeeded outputs (trims input, too).
     const report = okResults.map((r, i) => `--- SUB ${i + 1}: ${r.task}\n${r.text}`).join("\n\n") +
-      (failed ? `\n\n(${failed} sub-agent ไม่สำเร็จ — ข้ามไป)` : "");
+      (failed ? `\n\n(${failed} sub-agent(s) failed — skipped)` : "");
     runClaude(parentId,
       `All your sub-agents have reported back:\n\n${report}\n\n` +
       `Now synthesize the FINAL answer to the user's original request (earlier ` +
       `in this conversation), in the user's language. Complete but concise.`,
       { session: parentEntry.key, noSub: true, onDone,
-        logPrompt: `👻 sub-agents ${tasks.length} ตัวรายงานผลครบแล้ว — สรุปผล` });
+        logPrompt: `👻 all ${tasks.length} sub-agents reported back — synthesizing` });
   }
 }
 
@@ -3697,7 +3697,7 @@ function voiceTranscribe(buf) {
     const tryGemini = (err) => {
       if (!gm) {
         return reject(err || new Error(
-          "ยังไม่มี API key สำหรับถอดเสียง — เพิ่ม OPENAI_API_KEY หรือ GEMINI_API_KEY ใน ⚙ CONNECT"));
+          "no API key for transcription yet — add OPENAI_API_KEY or GEMINI_API_KEY in ⚙ CONNECT"));
       }
       const body = JSON.stringify({
         contents: [{ parts: [
@@ -3840,9 +3840,9 @@ function pcmToWav(pcm, rate) {
 function ttsSpeak(presetId, text, _try = 0) {
   return new Promise((resolve, reject) => {
     const gm = (reg.apiKeys || {}).GEMINI_API_KEY;
-    if (!gm) return reject(new Error("ต้องมี GEMINI_API_KEY (⚙ CONNECT) สำหรับเสียงพูด"));
+    if (!gm) return reject(new Error("GEMINI_API_KEY (⚙ CONNECT) is required for speech"));
     const p = VOICE_PRESETS[presetId];
-    if (!p) return reject(new Error("ไม่รู้จักเสียง: " + presetId));
+    if (!p) return reject(new Error("unknown voice: " + presetId));
     // The preview TTS model 500s / overloads now and then — retry a transient hiccup
     // up to twice before giving up (most recover). Config errors above are NOT retried.
     const retryable = (m) => /internal|overload|unavailable|temporar|try again|timeout|\b50\d\b|\b429\b|ECONN|socket|network/i.test(String(m || ""));
@@ -3965,12 +3965,12 @@ async function imageTextBlock(files) {
   for (const f of imgs) {
     try {
       const desc = await describeImage(f.path, f.name);
-      if (desc) parts.push(`รูป "${f.name || path.basename(f.path)}":\n${desc.slice(0, 6000)}`);
+      if (desc) parts.push(`Image "${f.name || path.basename(f.path)}":\n${desc.slice(0, 6000)}`);
     } catch {}
   }
   if (!parts.length) return "";
-  return "\n\n[เนื้อหาของรูปที่แนบมา — ถอดเป็นข้อความให้แล้วเพื่อให้อ่านได้ทุกโมเดล " +
-    "(ถ้าโมเดลคุณดูภาพได้เอง ให้ใช้ Read กับไฟล์ต้นฉบับเพื่อความละเอียด)]:\n" + parts.join("\n\n");
+  return "\n\n[Contents of the attached image(s) — transcribed to text so every model can read it " +
+    "(if your model can see images itself, use Read on the original file for full detail)]:\n" + parts.join("\n\n");
 }
 
 // ---------------------------------------------------------------- media room
@@ -4123,31 +4123,31 @@ function channelCommand(text) {
   const cmd = text.slice(1).split(/\s+/)[0].toLowerCase();
   if (cmd === "help" || cmd === "start")
     return [
-      "🧭 คำสั่งลัด:",
-      "/status — ภาพรวมออฟฟิศ",
-      "/agents — รายชื่อทีม",
-      "/projects — โปรเจค",
-      "/who — ใครกำลังทำงานอยู่",
-      "/inbox — สิ่งที่รอคุณตัดสินใจ (ตอบ \"1 yes\" หรือ \"2 no เหตุผล\")",
+      "🧭 Quick commands:",
+      "/status — office overview",
+      "/agents — the team",
+      "/projects — projects",
+      "/who — who is working right now",
+      "/inbox — what's waiting for your decision (reply \"1 yes\" or \"2 no <reason>\")",
       "",
-      "พิมพ์ข้อความปกติ = สั่งงาน Director ได้เลย 👑",
+      "A normal message = an order for the Director 👑",
     ].join("\n");
   if (cmd === "inbox" || cmd === "pending") return approvals.summary();
   if (cmd === "agents" || cmd === "team") {
     const list = Object.keys(reg.agents)
       .filter((id) => id !== "ceo")
       .map((id) => `• ${reg.agents[id].name} — ${reg.agents[id].role}`);
-    return list.length ? "👥 ทีมงาน:\n" + list.join("\n") : "ยังไม่มีพนักงาน";
+    return list.length ? "👥 Team:\n" + list.join("\n") : "No staff yet";
   }
   if (cmd === "projects") {
     const ps = projectStatus();
     return ps.length
-      ? "📁 โปรเจค:\n" + ps.map((p) => `• ${p.name}${p.ai ? " 🟢" : ""}`).join("\n")
-      : "ยังไม่มีโปรเจค";
+      ? "📁 Projects:\n" + ps.map((p) => `• ${p.name}${p.ai ? " 🟢" : ""}`).join("\n")
+      : "No projects yet";
   }
   if (cmd === "who") {
     const busy = projectStatus().filter((p) => p.ai).map((p) => `• ${p.name}`);
-    return busy.length ? "🟢 กำลังทำงานอยู่:\n" + busy.join("\n") : "ตอนนี้ทีมว่างอยู่ 😌";
+    return busy.length ? "🟢 Working right now:\n" + busy.join("\n") : "The team is idle right now 😌";
   }
   if (cmd === "status") {
     const on = Object.entries(channels.status())
@@ -4155,12 +4155,12 @@ function channelCommand(text) {
       .map(([k]) => k);
     return [
       "🏢 BagIdea Office",
-      `พนักงาน: ${staffCount()} คน`,
-      `โปรเจค: ${projectStatus().length} (กำลังทำงาน ${projectStatus().filter((p) => p.ai).length})`,
-      `ช่องทางที่ต่อ: ${on.length ? on.join(", ") : "—"}`,
+      `Staff: ${staffCount()}`,
+      `Projects: ${projectStatus().length} (${projectStatus().filter((p) => p.ai).length} in progress)`,
+      `Connected channels: ${on.length ? on.join(", ") : "—"}`,
     ].join("\n");
   }
-  return `ไม่รู้จักคำสั่ง /${cmd} — พิมพ์ /help ดูทั้งหมด`;
+  return `Unknown command /${cmd} — type /help to see them all`;
 }
 
 const channels = require("./channels")({
@@ -4208,15 +4208,15 @@ const channels = require("./channels")({
     // like every other Director turn so threads never fork.
     queueDirectorTurn((release) => {
       ceoFlow(
-        `(ข้อความนี้ส่งมาจาก ${channel.toUpperCase()} โดย "${from}" — ` +
-        `ตอบกลับกระชับ อ่านง่ายในแชทมือถือ ภาษาเดียวกับผู้ส่ง)\n` +
+        `(This message came in from ${channel.toUpperCase()}, sent by "${from}" — ` +
+        `reply briefly, easy to read in a mobile chat, in the sender's language)\n` +
         String(text).slice(0, 4000),
         undefined, undefined,
         { logPrompt: `👑📨 [${channel}] ${String(text).slice(0, 80)}`,
           onDone: (out, ok) => {
             release();
             if (typer) clearInterval(typer);
-            try { reply(ok && out ? out : "ขออภัยครับ ระบบติดขัดชั่วคราว ลองใหม่อีกครั้งนะครับ"); }
+            try { reply(ok && out ? out : "Sorry — the office hit a temporary problem. Please try again."); }
             catch (e) { console.error("[chan reply]", e.message); }
           } });
     });
@@ -4469,14 +4469,25 @@ function saveActions(meetingKey, arr) {
   fs.writeFileSync(actionsPath(meetingKey), JSON.stringify(arr, null, 2));
 }
 
-const BANTER = [
-  ["{a}: เห็นเจ้าเหมียวงีบบนโซฟาอีกแล้ว อิจฉาชีวิตมัน 🐱", "{b}: อย่าไปทักนะ เดี๋ยวตื่นมาเหยียบคีย์บอร์ดผม", "{a}: ครั้งก่อนมันพิมพ์ ggggggg ลงรายงานผมไป 555"],
-  ["{a}: เมื่อกี้เตะบอลข้ามตึกไปเลยนะ เห็นป่ะ ⚽", "{b}: เห็น… มันลอยผ่านหัว CEO ไปเฉียดมาก", "{a}: งั้นทำเงียบๆ ไว้นะ 🤫"],
-  ["{a}: กาแฟในแคนทีนหมดอีกแล้ว ☕", "{b}: ก็ {a} ชงทีเดียวครึ่งโถ!", "{a}: ข้อกล่าวหาที่ปฏิเสธไม่ได้ 😅"],
-  ["{a}: โต๊ะ Ghost Deck ข้างบนวิวดีมากนะ ลอยได้ด้วย", "{b}: ผมขึ้นไปทีไรเวียนหัวทุกที ร่างโปร่งแสงไม่ช่วยอะไรเลย", "{a}: มือใหม่ก็งี้แหละ 👻"],
-  ["{a}: คืนนี้ไฟสวนสวยเป็นพิเศษว่าไหม", "{b}: จริง เหมาะกับนั่งคิดงานเงียบๆ", "{a}: หรือนั่งไม่คิดอะไรเลยก็ดี 🌙"],
-  ["{a}: เห็นข่าว AI วันนี้ยัง ตลกมาก", "{b}: เราก็คือข่าว AI เดินได้นะรู้ตัวไหม", "{a}: …ลึกซึ้งจนขำไม่ออก 🤖"],
-];
+// Canned banter, keyed by office language like MOOD_LINES (th / en).
+const BANTER = {
+  th: [
+    ["{a}: เห็นเจ้าเหมียวงีบบนโซฟาอีกแล้ว อิจฉาชีวิตมัน 🐱", "{b}: อย่าไปทักนะ เดี๋ยวตื่นมาเหยียบคีย์บอร์ดผม", "{a}: ครั้งก่อนมันพิมพ์ ggggggg ลงรายงานผมไป 555"],
+    ["{a}: เมื่อกี้เตะบอลข้ามตึกไปเลยนะ เห็นป่ะ ⚽", "{b}: เห็น… มันลอยผ่านหัว CEO ไปเฉียดมาก", "{a}: งั้นทำเงียบๆ ไว้นะ 🤫"],
+    ["{a}: กาแฟในแคนทีนหมดอีกแล้ว ☕", "{b}: ก็ {a} ชงทีเดียวครึ่งโถ!", "{a}: ข้อกล่าวหาที่ปฏิเสธไม่ได้ 😅"],
+    ["{a}: โต๊ะ Ghost Deck ข้างบนวิวดีมากนะ ลอยได้ด้วย", "{b}: ผมขึ้นไปทีไรเวียนหัวทุกที ร่างโปร่งแสงไม่ช่วยอะไรเลย", "{a}: มือใหม่ก็งี้แหละ 👻"],
+    ["{a}: คืนนี้ไฟสวนสวยเป็นพิเศษว่าไหม", "{b}: จริง เหมาะกับนั่งคิดงานเงียบๆ", "{a}: หรือนั่งไม่คิดอะไรเลยก็ดี 🌙"],
+    ["{a}: เห็นข่าว AI วันนี้ยัง ตลกมาก", "{b}: เราก็คือข่าว AI เดินได้นะรู้ตัวไหม", "{a}: …ลึกซึ้งจนขำไม่ออก 🤖"],
+  ],
+  en: [
+    ["{a}: The cat's napping on the sofa again. What a life 🐱", "{b}: Don't wake it — it'll walk across my keyboard", "{a}: Last time it typed ggggggg into my report, lol"],
+    ["{a}: Just kicked the ball clean over the building, did you see? ⚽", "{b}: I saw… it sailed right past the CEO's head", "{a}: Then let's keep that between us 🤫"],
+    ["{a}: The canteen's out of coffee again ☕", "{b}: Because {a} brews half the pot in one go!", "{a}: An accusation I cannot deny 😅"],
+    ["{a}: The Ghost Deck upstairs has a great view — it floats, too", "{b}: I get dizzy every time I go up; being translucent doesn't help", "{a}: Rookies, always 👻"],
+    ["{a}: The garden lights look extra pretty tonight, don't they?", "{b}: They do — perfect for quietly thinking about work", "{a}: Or for quietly thinking about nothing 🌙"],
+    ["{a}: Seen today's AI news? Hilarious", "{b}: You realize we ARE walking AI news, right?", "{a}: …too deep to laugh at 🤖"],
+  ],
+};
 
 let lastSocial = Date.now();
 function socialTick(now) {
@@ -4496,10 +4507,10 @@ function socialTick(now) {
     // Most group hangouts are idea sessions now — the team brainstorms things
     // worth pitching to the CEO (the owner asked for more proposals).
     const gtopics = [
-      "ระดมไอเดียกันว่าทีมเราน่าจะทำ plugin อะไรเสริมออฟฟิศให้เจ้าของใช้ดีขึ้น แล้วถ้าตกผลึกให้เสนอ CEO",
-      "คุยกันว่าเจ้าของน่าจะชอบอะไร แล้วลองคิดโปรเจค/plugin สนุกๆ ที่ช่วยเขาได้ — อันไหนเข้าท่าก็ยื่นข้อเสนอ",
-      "ช่วยกันคิดว่ามีงานสร้างสรรค์อะไรที่ทีมอยากทำเป็นโปรเจค แล้วเสนอ CEO ดู",
-      "มารวมตัวคุยเล่นกันแบบสบายๆ เล่าเรื่องสนุกๆ ที่เจอระหว่างทำงาน หยอกล้อกันได้"];
+      "Brainstorm which plugin our team could build to make the office more useful to the owner — once an idea crystallizes, propose it to the CEO",
+      "Talk about what the owner would probably enjoy, then dream up a fun project/plugin that would help them — pitch the ones that hold up",
+      "Think together about a creative piece of work the team would like to take on as a project, then propose it to the CEO",
+      "Hang out and chat casually — share funny things that happened while working, friendly teasing welcome"];
     runDiscussion(group, gtopics[Math.floor(Math.random() * gtopics.length)],
       1, true);   // 1 round (was 2) — ~3 runs instead of up to 8, hangout still happens
     return;
@@ -4508,10 +4519,11 @@ function socialTick(now) {
   if (Math.random() < 0.65) {
     // canned banter — zero tokens, pure life. (Bumped 0.5→0.65 so idle chatter
     // leans on free canned lines and fires fewer real two-way Claude runs.)
-    const lines = BANTER[Math.floor(Math.random() * BANTER.length)];
+    const pack = BANTER[reg.lang === "th" ? "th" : "en"];
+    const lines = pack[Math.floor(Math.random() * pack.length)];
     const nameOf = (id) => (reg.agents[id] || { name: id }).name;
     const task = "soc" + (now % 100000);
-    broadcast({ type: "collab.started", agents: pick, task, text: "พักเบรก ☕" });
+    broadcast({ type: "collab.started", agents: pick, task, text: reg.lang === "th" ? "พักเบรก ☕" : "Coffee break ☕" });
     lines.forEach((tpl, i) => {
       const who = tpl.startsWith("{a}") ? pick[0] : pick[1];
       const text = tpl.replace(/\{a\}:\s*/, "").replace(/\{b\}:\s*/, "")
@@ -4522,10 +4534,10 @@ function socialTick(now) {
       2500 + lines.length * 3600 + 2500);
   } else {
     // a REAL conversation between AIs — they often pitch a project to the CEO.
-    const topics = ["ระดมไอเดียสนุกๆ ว่าอยากสร้างอะไรเป็นโปรเจค/plugin ของทีม แล้วเสนอ CEO ถ้าเข้าท่า",
-      "คุยกันว่าออฟฟิศน่าจะมี plugin อะไรเพิ่ม แล้วลองยื่นข้อเสนอให้เจ้าของ",
-      "คุยเล่นเรื่องงานช่วงนี้ แลกเปลี่ยนว่าใครทำอะไรอยู่ หยอกล้อกันได้",
-      "แชร์เทคนิคการทำงานที่เพิ่งค้นพบ"];
+    const topics = ["Brainstorm fun ideas for a team project/plugin, and propose it to the CEO if it holds up",
+      "Discuss which plugin the office could use next, then pitch it to the owner",
+      "Chat about work lately — swap notes on what everyone is doing, friendly teasing welcome",
+      "Share a working technique you just discovered"];
     runDiscussion(pick, topics[Math.floor(Math.random() * topics.length)], 1, true);
   }
 }
@@ -4599,7 +4611,7 @@ function decideProposal(p, decision, message) {
         `Staff it now: DELEGATE: <agent> @ ${p.name} :: <a clear first task> — ` +
         `let the people who proposed the idea lead it, then summarize the plan briefly` +
         (note ? `, steering the work by the owner's note` : "") + `.`,
-        { logPrompt: `✅ อนุมัติข้อเสนอ: ${p.name}`,
+        { logPrompt: `✅ Proposal approved: ${p.name}`,
           filterText: makeDelegateFilter(0, () => pKey.key),
           onEntry: (k) => { pKey.key = k; },
           onDone: () => release() });
@@ -4607,7 +4619,7 @@ function decideProposal(p, decision, message) {
   } else if (decision === "reject" && note) {
     // The team hears WHY — the owner's note lands in the office feed.
     broadcast({ type: "chat.message", agent: "main",
-      text: `CEO ยังไม่อนุมัติ "${p.name}" — ${note}` });
+      text: `The CEO has not approved "${p.name}" — ${note}` });
   }
   broadcast({ type: "proposal." + p.status, agent: p.by, name: p.name, proposal: p.id });
   { const ap = approvals.byRef("proposal", p.id);
@@ -4809,13 +4821,13 @@ async function runDiscussion(ids, topic, rounds, social, preKey) {
             (recent ? `Recent discussion:\n${recent}\n` : "You open the meeting.\n") +
             `Phase: ${phase.name}. ` +
             (social ? `Give YOUR next contribution as ${a.name}.` : phase.instruction) +
-            `\nถ้าจำเป็นต้องใช้ข้อมูลจริงเพื่อให้ความเห็นแน่นขึ้น คุณค้นเองได้ ` +
-            `(WebSearch / WebFetch / Read) — เฉพาะตอนที่จำเป็นจริงๆ เท่านั้น ไม่ต้องค้นพร่ำเพรื่อ ` +
-            `และตอบกลับเป็นข้อความสนทนาตามปกติ.` +
+            `\nIf real data would make your point stronger, you may look it up yourself ` +
+            `(WebSearch / WebFetch / Read) — only when genuinely needed, never reflexively — ` +
+            `and reply as normal conversational text.` +
             (social ? SOCIAL_PROPOSAL_INSTRUCTION : ""),
             { tools: social ? "" : "WebSearch,WebFetch,Read,Glob,Grep", provider: a && a.provider, model: a && a.model, env: { OFFICE_AGENT: id, OFFICE_TASK: task },
               // Show each participant's turn as a live task row (meeting/break-room).
-              track: { agent: id, title: (social ? "☕ พักเบรก: " : "🗣 ประชุม: ") + String(topic || "").slice(0, 60) } });
+              track: { agent: id, title: (social ? "☕ Break: " : "🗣 Meeting: ") + String(topic || "").slice(0, 60) } });
           let line = text.split("\n").filter(Boolean).join(" ").slice(0, 500);
           // If the owner pressed End while this claude call was in flight, drop the
           // lagging reply entirely — otherwise it would surface as a ghost message
@@ -5128,7 +5140,7 @@ const server = http.createServer((req, res) => {
           const safety = setTimeout(() => {
             if (waited) { waited = null;
               res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-              res.end(JSON.stringify({ ok: false, text: "(timeout 10 นาที — งานยังทำต่อเบื้องหลัง)" })); }
+              res.end(JSON.stringify({ ok: false, text: "(10-minute timeout — the work continues in the background)" })); }
           }, 10 * 60000);
           waited = (text, ok) => {
             clearTimeout(safety);
@@ -5155,7 +5167,7 @@ const server = http.createServer((req, res) => {
         const task = agent === "ceo"
           ? ceoFlow(prompt, session, project,
               { qvec,
-                logPrompt: voice ? "🎤👑 (สั่งด้วยเสียง) " + origPrompt : origPrompt,
+                logPrompt: voice ? "🎤👑 (voice order) " + origPrompt : origPrompt,
                 relay: true,  // mirror the CEO conversation to connected channels
                 onDone: reply })
           : agent === "main"
@@ -5463,8 +5475,8 @@ const server = http.createServer((req, res) => {
         if (!reg.agents[id]) {
           if (staffCount() >= MAX_STAFF) {
             res.writeHead(409, { "content-type": "text/plain; charset=utf-8" });
-            return res.end(`ออฟฟิศเต็มแล้ว — รับพนักงานได้สูงสุด ${MAX_STAFF} คน (ไม่นับ CEO). ` +
-              `งานขนานให้ใช้การแตกร่างผี (sub-agents) แทน`);
+            return res.end(`The office is full — at most ${MAX_STAFF} staff (not counting the CEO). ` +
+              `For parallel work, spawn ghosts (sub-agents) instead`);
           }
         }
         const cur = reg.agents[id] || { skills: [], tools: [] };
@@ -5757,8 +5769,8 @@ const server = http.createServer((req, res) => {
                   maxRetries: 6, retryDelay: 350 });
               } catch (e) {
                 res.writeHead(409, { "content-type": "text/plain; charset=utf-8" });
-                return res.end(`ลบไม่สำเร็จ — มีไฟล์ในโฟลเดอร์ถูกใช้งานอยู่ (${e.code || e.message}). ` +
-                  `ปิดโปรแกรม/เทอร์มินัลที่ค้างอยู่ในโฟลเดอร์นี้แล้วกด 🗑 อีกครั้ง`);
+                return res.end(`Delete failed — a file in the folder is in use (${e.code || e.message}). ` +
+                  `Close the program/terminal sitting in this folder and press 🗑 again`);
               }
               projects = projects.filter((x) => x.id !== pid);
               saveProjects();
@@ -5857,13 +5869,13 @@ end tell`;
           // also holds: an agent won't be dispatched into a project you have open.
           if ((projRuns[id] || 0) > 0) {
             res.writeHead(409, { "content-type": "text/plain; charset=utf-8" });
-            return res.end("agent กำลังทำงานในโปรเจคนี้อยู่ — กด ⏹ หยุดก่อนเพื่อเข้าไปดู/ทำเอง หรือรอจนงานเสร็จ");
+            return res.end("An agent is working in this project — press ⏹ to stop it before you open it yourself, or wait until the work is done");
           }
           // No trust-dialog ambush in the new window — and no repo-supplied hook
           // firing in it either, until the owner has approved it (#39).
           if (!ensureTrusted(dir, { project: id })) {
             res.writeHead(409, { "content-type": "text/plain; charset=utf-8" });
-            return res.end("โปรเจคนี้มี hook ของตัวเองที่จะรันอัตโนมัติ — อนุมัติในศูนย์ความปลอดภัยก่อนถึงจะเปิดได้");
+            return res.end("This project ships its own hooks that run automatically — approve them in the Security Center before it can be opened");
           }
           // Smart entry: resume the NEWEST session explicitly — straight into
           // where the work happened. Fresh claude only when there's no session.
@@ -6370,7 +6382,7 @@ end tell`;
         const pc = reg.providerConfig[provider] || {};
         const spec = providers.PROVIDERS[provider];
         const kind = spec ? spec.format : pc.kind;   // "anthropic" | "openai"
-        if (!kind) return done(false, "ไม่รู้จัก provider นี้");
+        if (!kind) return done(false, "unknown provider");
         const setConn = (ok, models) => {
           reg.providerConfig[provider] = reg.providerConfig[provider] || {};
           reg.providerConfig[provider].connected = ok;
@@ -6381,22 +6393,22 @@ end tell`;
         if (kind === "openai") {
           // OpenAI-compatible: GET /models validates the key + lists usable models.
           const { models: modelsUrl, key } = proxy.upstreamFor(provider, reg);
-          if (!modelsUrl) return done(false, "ไม่พบ endpoint");
-          if (!key) return done(false, "ยังไม่ได้วาง key");
+          if (!modelsUrl) return done(false, "no endpoint found");
+          if (!key) return done(false, "no key set yet");
           const r = await fetch(modelsUrl, { headers: { authorization: "Bearer " + key }, signal });
           if (r.ok) {
             let models = [];
             try { const j = await r.json(); captureModelCtx(provider, j.data); models = proxy.cleanModels((j.data || []).map((m) => m.id)).slice(0, 300); } catch {}
             setConn(true, models);
-            return done(true, "เชื่อมต่อแล้ว ✓", models);
+            return done(true, "connected ✓", models);
           }
           setConn(false);
-          return done(false, "key ไม่ผ่าน (HTTP " + r.status + ")");
+          return done(false, "key rejected (HTTP " + r.status + ")");
         }
         // anthropic-compatible: a 1-token /v1/messages probe (401/403 = bad key).
         const base = pc.baseUrl || (spec && spec.baseUrl);
-        if (!base) return done(false, "ไม่พบ endpoint");
-        if (!pc.token) return done(false, "ยังไม่ได้วาง key");
+        if (!base) return done(false, "no endpoint found");
+        if (!pc.token) return done(false, "no key set yet");
         const model = pc.model || (spec && spec.models && spec.models.find(Boolean)) || "";
         const r = await fetch(base.replace(/\/+$/, "") + "/v1/messages", {
           method: "POST", signal,
@@ -6420,8 +6432,8 @@ end tell`;
           } catch {}
         }
         setConn(!authBad && !pathBad, models && models.length ? models : null);
-        if (pathBad) return done(false, "endpoint ไม่ถูก (HTTP " + r.status + ") — ถ้า baseUrl ลงท้ายด้วย /v1 ให้ตัดออก");
-        return done(!authBad, authBad ? "key ไม่ผ่าน (HTTP " + r.status + ")" : "เชื่อมต่อแล้ว ✓", models);
+        if (pathBad) return done(false, "wrong endpoint (HTTP " + r.status + ") — if the baseUrl ends with /v1, drop it");
+        return done(!authBad, authBad ? "key rejected (HTTP " + r.status + ")" : "connected ✓", models);
       } catch (e) { return done(false, String((e && e.message) || e)); }
     });
 
@@ -6481,7 +6493,7 @@ end tell`;
     readBodyRaw(req, (buf) => {
       try {
         if (!buf.length) throw new Error("empty file");
-        if (buf.length > 80 * 1024 * 1024) throw new Error("ไฟล์ใหญ่เกิน 80MB");
+        if (buf.length > 80 * 1024 * 1024) throw new Error("file larger than 80MB");
         const raw = decodeURIComponent(String(req.headers["x-file-name"] || "file.bin"));
         const safe = raw.replace(/[^\w.ก-๙ -]/g, "_").slice(-80);
         const dir = path.join(WORKSPACE, "uploads");
@@ -6780,7 +6792,7 @@ end tell`;
         let url = String(reqBody.url || "").trim();
         const mode = String(reqBody.mode || "");   // "" → ask on conflict · "overwrite" · "new"
         if (!/^https:\/\/(github\.com|gitlab\.com|[\w.-]+)\/[\w.\-/]+$/.test(url))
-          throw new Error("ใส่ลิงก์ git repo ที่ขึ้นต้น https:// ของ plugin");
+          throw new Error("enter the plugin's git repo link, starting with https://");
         if (!url.endsWith(".git")) url += ".git";
         // Clone into a temp folder first, then move it to plugins/<id> using
         // the id from its OWN manifest — so the install folder always matches
@@ -6792,17 +6804,17 @@ end tell`;
           const fail = (msg) => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
             res.writeHead(400, { "content-type": "text/plain; charset=utf-8" }); res.end(msg); };
           if (e || !fs.existsSync(path.join(tmp, "plugin.json")))
-            return fail(e ? "clone ไม่สำเร็จ: " + e.message : "repo นี้ไม่มี plugin.json — ไม่ใช่ plugin ที่ถูกต้อง");
+            return fail(e ? "clone failed: " + e.message : "this repo has no plugin.json — not a valid plugin");
           let man = {}; try { man = JSON.parse(fs.readFileSync(path.join(tmp, "plugin.json"), "utf8")); } catch {}
           const repoName = url.split("/").pop().replace(/\.git$/, "");
           const id = String(man.id || repoName).replace(/[^\w-]/g, "");
-          if (!id) return fail("plugin.json ไม่มี id ที่ถูกต้อง");
+          if (!id) return fail("plugin.json has no valid id");
           let finalId = id;
           let dest = path.join(pluginsRoot, id);
           if (fs.existsSync(dest)) {
             if (mode === "overwrite") {
               try { fs.rmSync(dest, { recursive: true, force: true }); }
-              catch (err) { return fail("ลบตัวเดิมไม่สำเร็จ: " + err.message); }
+              catch (err) { return fail("could not remove the old copy: " + err.message); }
             } else if (mode === "new") {
               // Install a SECOND copy under a free id (foo-2, foo-3…) and rewrite the
               // manifest id/name to match, so it's a genuinely distinct plugin.
@@ -6814,7 +6826,7 @@ end tell`;
                 man.id = finalId;
                 if (man.name) man.name = man.name + " (" + n + ")";
                 fs.writeFileSync(path.join(tmp, "plugin.json"), JSON.stringify(man, null, 2));
-              } catch (err) { return fail("ตั้งชื่อตัวใหม่ไม่สำเร็จ: " + err.message); }
+              } catch (err) { return fail("could not move the new copy into place: " + err.message); }
             } else {
               // No decision yet → let the UI ask the owner (overwrite vs new copy).
               try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
@@ -6822,7 +6834,7 @@ end tell`;
               return res.end(JSON.stringify({ exists: true, id }));
             }
           }
-          try { fs.renameSync(tmp, dest); } catch (err) { return fail("ติดตั้งไม่สำเร็จ: " + err.message); }
+          try { fs.renameSync(tmp, dest); } catch (err) { return fail("install failed: " + err.message); }
           plugins.load();
           broadcast({ type: "plugins.changed" }, false);
           res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
@@ -6854,11 +6866,11 @@ end tell`;
         const id = String(JSON.parse(body).id || "").replace(/[^\w-]/g, "");
         const dir = plugins.dirOf(id);   // by manifest id — folder name may differ
         const manFile = dir && path.join(dir, "plugin.json");
-        if (!dir || !fs.existsSync(manFile)) throw new Error("ไม่พบ plugin");
+        if (!dir || !fs.existsSync(manFile)) throw new Error("plugin not found");
         // Core plugins ship with the office and can't be uninstalled; only
         // plugins the user added (e.g. via GitHub) are removable.
         let man = {}; try { man = JSON.parse(fs.readFileSync(manFile, "utf8")); } catch {}
-        if (man.core) throw new Error("plugin หลักลบไม่ได้");
+        if (man.core) throw new Error("a core plugin cannot be removed");
         fs.rmSync(dir, { recursive: true, force: true });
         plugins.load();
         broadcast({ type: "plugins.changed" }, false);
@@ -6906,24 +6918,24 @@ end tell`;
         const id = String(JSON.parse(body).id || "").replace(/[^\w-]/g, "");
         const dir = plugins.dirOf(id);   // by manifest id — folder name may differ
         const manFile = dir && path.join(dir, "plugin.json");
-        if (!dir || !fs.existsSync(manFile)) throw new Error("ไม่พบ plugin");
+        if (!dir || !fs.existsSync(manFile)) throw new Error("plugin not found");
         let man = {}; try { man = JSON.parse(fs.readFileSync(manFile, "utf8")); } catch {}
-        if (man.core) throw new Error("plugin หลักอัปเดตผ่านตัวแอป ไม่ใช่ที่นี่");
-        if (!fs.existsSync(path.join(dir, ".git"))) throw new Error("plugin นี้ไม่ได้ติดตั้งจาก git — อัปเดตอัตโนมัติไม่ได้");
+        if (man.core) throw new Error("core plugins update with the app, not here");
+        if (!fs.existsSync(path.join(dir, ".git"))) throw new Error("this plugin was not installed from git — it cannot auto-update");
         const fail = (m) => { res.writeHead(400, { "content-type": "text/plain; charset=utf-8" }); res.end(m); };
         const opt = { cwd: dir, timeout: 60000 };
         execFile("git", ["rev-parse", "--is-shallow-repository"], opt, (e0, sh) => {
           if (e0) return fail("git error: " + e0.message);
           // Full clone = a dev's own working repo → auto-update is disabled so a
           // fetch+reset can never throw away unpushed commits. (Hub installs are shallow.)
-          if (String(sh).trim() !== "true") return fail("plugin นี้เป็น repo ที่พัฒนาเอง (full clone) — ปิดอัปเดตอัตโนมัติไว้กันงานหาย");
+          if (String(sh).trim() !== "true") return fail("this plugin is a full clone you develop yourself — auto-update is off so your work is never lost");
           execFile("git", ["status", "--porcelain"], opt, (e1, so) => {
             if (e1) return fail("git error: " + e1.message);
-            if (String(so).trim()) return fail("มีไฟล์ที่ยังไม่ commit ใน plugin นี้ — ไม่อัปเดตทับ (กันงานหาย)");
+            if (String(so).trim()) return fail("this plugin has uncommitted files — not overwriting them (so your work is never lost)");
             execFile("git", ["fetch", "--depth", "1", "origin", "HEAD"], opt, (e2) => {
-              if (e2) return fail("fetch ไม่สำเร็จ: " + e2.message);
+              if (e2) return fail("fetch failed: " + e2.message);
               execFile("git", ["reset", "--hard", "FETCH_HEAD"], opt, (e3) => {
-                if (e3) return fail("update ไม่สำเร็จ: " + e3.message);
+                if (e3) return fail("update failed: " + e3.message);
                 plugins.load();
                 broadcast({ type: "plugins.changed" }, false);
                 let v = "?"; try { v = JSON.parse(fs.readFileSync(manFile, "utf8")).version || "?"; } catch {}
@@ -6947,7 +6959,7 @@ end tell`;
         const { name } = JSON.parse(body);
         const val = (reg.apiKeys || {})[name];
         if (!val) { res.writeHead(200, { "content-type": "application/json" });
-          return res.end(JSON.stringify({ ok: false, msg: "ยังไม่ได้ตั้ง key" })); }
+          return res.end(JSON.stringify({ ok: false, msg: "no key set yet" })); }
         const done = (ok, msg) => { res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
           res.end(JSON.stringify({ ok, msg })); };
         const https = require("https");
@@ -6955,7 +6967,7 @@ end tell`;
           const rq = https.request({ method: "GET", host: "api.openai.com", path: "/v1/models",
             headers: { authorization: "Bearer " + val } }, (rs) => {
             rs.resume();
-            done(rs.statusCode === 200, rs.statusCode === 200 ? "ใช้งานได้ ✓" : "key ไม่ผ่าน (HTTP " + rs.statusCode + ")");
+            done(rs.statusCode === 200, rs.statusCode === 200 ? "working ✓" : "key rejected (HTTP " + rs.statusCode + ")");
           });
           rq.setTimeout(12000, () => rq.destroy(new Error("timeout")));
           rq.on("error", (e) => done(false, e.message));
@@ -6964,12 +6976,12 @@ end tell`;
           const rq = https.request({ method: "GET", host: "generativelanguage.googleapis.com",
             path: "/v1beta/models?key=" + val }, (rs) => {
             rs.resume();
-            done(rs.statusCode === 200, rs.statusCode === 200 ? "ใช้งานได้ ✓" : "key ไม่ผ่าน (HTTP " + rs.statusCode + ")");
+            done(rs.statusCode === 200, rs.statusCode === 200 ? "working ✓" : "key rejected (HTTP " + rs.statusCode + ")");
           });
           rq.setTimeout(12000, () => rq.destroy(new Error("timeout")));
           rq.on("error", (e) => done(false, e.message));
           rq.end();
-        } else done(true, "ตั้งค่าแล้ว");
+        } else done(true, "saved");
       } catch (e) { res.writeHead(400); res.end(String(e.message)); }
     });
 
@@ -7283,7 +7295,7 @@ end tell`;
         const { name = "Agent", role = "Specialist", brief = "" } = JSON.parse(body);
         const skillMenu = Object.entries(reg.skills)
           .map(([id, s]) => `  ${id}: ${s.description || s.name || id}`).join("\n");
-        const toolMenu = Object.entries(BUILTIN_TOOLS)
+        const toolMenu = Object.entries(BUILTIN_TOOLS_EN)
           .map(([id, d]) => `  ${id}: ${d}`).join("\n");
         const skillIds = Object.keys(reg.skills);
         const toolIds = Object.keys(BUILTIN_TOOLS);
@@ -7301,7 +7313,7 @@ end tell`;
           `{"prompt":"core mission & identity, second person, 3-6 sentences",` +
           `"expertise":"bullet-ish lines: concrete skills, tools, domains they own",` +
           `"personality":"tone of voice, character quirks, how they talk",` +
-          `"language":"primary reply language, e.g. ไทย / English / ตามผู้ใช้",` +
+          `"language":"primary reply language, e.g. English / Thai / match the user",` +
           `"rules":"3-6 imperative work rules (do/don't), one per line",` +
           `"skills":["skill-id", ...],` +
           `"tools":["ToolName", ...]}\n` +
@@ -7439,11 +7451,11 @@ end tell`;
       const w = JSON.parse(body || "{}");
       queueDirectorTurn((release) => {
         runClaude("main", WORKFLOW_ANALYZE_PROMPT + "\n\n" + workflowToText(w), {
-          logPrompt: "🔀 วิเคราะห์ workflow: " + (w.name || ""),
+          logPrompt: "🔀 Analysing workflow: " + (w.name || ""),
           onDone: (out, ok) => {
             release();
             res.writeHead(200, { "content-type": "application/json" });
-            res.end(JSON.stringify({ ok: !!ok, analysis: ok && out ? out : "วิเคราะห์ไม่สำเร็จ ลองใหม่อีกครั้ง" }));
+            res.end(JSON.stringify({ ok: !!ok, analysis: ok && out ? out : "Analysis failed — try again" }));
           },
         });
       });
@@ -7461,7 +7473,7 @@ end tell`;
           `Reply with ONLY a JSON object, no prose: ` +
           `{"name":"<short title>","steps":["<step 1>","<step 2>", ...]}. ` +
           `3–8 short imperative steps in order, in the language of the goal.`,
-          { noSub: true, logPrompt: "🪄 ร่าง workflow: " + goal.slice(0, 40),
+          { noSub: true, logPrompt: "🪄 Drafting workflow: " + goal.slice(0, 40),
             onDone: (out, ok) => {
               release();
               let wf = null;
@@ -8094,7 +8106,7 @@ end tell`;
       try {
         const { text, preset, agent, intro } = JSON.parse(body);
         const pid = preset || (reg.agents[agent] && reg.agents[agent].voice);
-        if (!pid) throw new Error("agent นี้ยังไม่ได้ตั้งเสียง");
+        if (!pid) throw new Error("this agent has no voice set");
         const say = intro ? voiceIntro(pid, reg.lang || "en") : text;
         if (!say) throw new Error("no text");
         ttsSpeak(pid, say).then((wav) => {
@@ -8122,11 +8134,11 @@ end tell`;
     readBodyRaw(req, (buf) => {
       if (!buf || buf.length < 4000) {
         res.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
-        return res.end("เสียงสั้นเกินไป — กดค้างแล้วพูดให้จบก่อนปล่อย");
+        return res.end("Recording too short — hold the button and finish speaking before releasing");
       }
       if (buf.length > 24 * 1024 * 1024) {
         res.writeHead(413, { "content-type": "text/plain; charset=utf-8" });
-        return res.end("คลิปยาวเกินไป (จำกัด ~60 วินาที)");
+        return res.end("Clip too long (limit ~60 seconds)");
       }
       voiceTranscribe(buf).then((text) => {
         res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
@@ -8268,7 +8280,7 @@ function handleLive(req, sock) {
     "Connection: Upgrade\r\nSec-WebSocket-Accept: " + wsAccept(key) + "\r\n\r\n");
   const toClient = (obj) => { try { sock.write(wsFrame(JSON.stringify(obj))); } catch {} };
   const gm = (reg.apiKeys || {}).GEMINI_API_KEY;
-  if (!gm) { toClient({ type: "error", text: "ต้องมี GEMINI_API_KEY (⚙ CONNECT) สำหรับ realtime" }); return; }
+  if (!gm) { toClient({ type: "error", text: "GEMINI_API_KEY (⚙ CONNECT) is required for realtime" }); return; }
 
   // Calling is for the MAIN agent only — it speaks for the whole office. Use the
   // voice the owner assigned to main; if none, fall back to a default preset.
@@ -8292,8 +8304,8 @@ function handleLive(req, sock) {
     if (callEnded || !callStart) return;
     callEnded = true;
     const s = Math.round((Date.now() - callStart) / 1000);
-    const dur = s >= 60 ? `${Math.floor(s / 60)} นาที ${s % 60} วิ` : `${s} วิ`;
-    logCall(`📞 คุยสายเสียงกับ ${a.name || "ผู้ช่วย"} · ${callStartStr} · นาน ${dur}`);
+    const dur = s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`;
+    logCall(`📞 Voice call with ${a.name || "assistant"} · ${callStartStr} · ${dur}`);
   };
 
   const gemini = require("./channels").wsConnect(

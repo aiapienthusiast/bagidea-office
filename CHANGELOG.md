@@ -4,6 +4,31 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [Unreleased]
+
+**Fixed**
+- **🌐 The daemon's own voice is English everywhere** ([#67](https://github.com/bagidea/bagidea-office/issues/67)).
+  v1.0.5 made the persona and preamble English, but the rest of what the daemon
+  says *on its own* was still Thai: the memory block injected into every prompt
+  (`<office-memory>`), the Builder's workflow-analysis prompt, the thread-summary
+  prompt used by auto-compact, the wrapper around a message arriving from a chat
+  channel, the meeting "look it up yourself" nudge, the image-transcription
+  wrapper, the tool menu in the persona draft, every system notice pushed into
+  the chat (limits, brain fail-over, auto-compact, AUTO rounds, hook approval,
+  proposals, sub-agent fan-out), every log label (`logPrompt`), the `/help`,
+  `/status`, `/agents`, `/projects`, `/who` replies on Telegram & co., the
+  channel fallback reply, the `notes.md` / memory-file headers, and the HTTP /
+  provider-probe / plugin-install error strings. An English office was still
+  being nudged toward Thai; agents in any language now get English scaffolding
+  and the office language note decides the reply language, as designed. The
+  canned break-room banter joins the mood lines as a th/en table picked by the
+  office language. In the overlay, the feed and chat-log lines the UI writes
+  itself (👻 ghost spawned, 📋 delegated, 🛡 hook approval, 🔄 new version, 🤝
+  meeting started/ended, …) now go through the translator with pre-seeded
+  strings in all 14 languages — they live in the subtrees the runtime translator
+  skips, so an English office saw them in Thai. Six new tests pin all of it;
+  the first alone flags 85 lines of the previous `server.js`.
+
 ## [1.9.1] — 🖼️ Under the icons again
 
 **Fixed**
