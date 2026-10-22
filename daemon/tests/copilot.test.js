@@ -21,7 +21,7 @@ const baseReg = (extra = {}) => ({
     main: { name: "Shino", role: "Director", provider: "claude", model: "claude-fable-5-1",
       persona: { language: "Thai, English on technical words", rules: "1. delegate to leads\n2. keep the team calm" } },
     ceo: { name: "CEO", role: "Owner" },
-    mali: { name: "Mali", role: "Designer", provider: "lmstudio", model: "qwen-x" },
+    nina: { name: "Nina", role: "Designer", provider: "lmstudio", model: "qwen-x" },
   },
   providerConfig: {
     lmstudio: { connected: true, models: ["qwen-x"] },
@@ -397,7 +397,7 @@ test("setBrain(): validates like the fallback brain, persists reg.copilot, broad
 test("officeContext: agents (not the owner), skills with one-line descriptions, tool names", () => {
   const ctx = copilot.officeContext(baseReg(), { tools: ["Read", "Bash", "WebSearch"] });
   assert.match(ctx, /^- main: Shino — Director$/m);
-  assert.match(ctx, /^- mali: Mali — Designer$/m);
+  assert.match(ctx, /^- nina: Nina — Designer$/m);
   assert.doesNotMatch(ctx, /- ceo:/);
   assert.match(ctx, /^- deep-research: Methodical web research/m);
   assert.ok(ctx.indexOf("deep-research") < ctx.indexOf("lesson-x"), "library skills before learned lessons");
@@ -458,7 +458,7 @@ test("routes: /copilot/settings + the three copilot routes run one-shot on the p
   // A stand-in OpenAI-compatible server, registered as provider "lmstudio" through its baseUrl.
   const seen = [];
   let mode = "ok";
-  const PERSONA = { prompt: "คุณคือ Mali2 นักออกแบบ", expertise: ["UI", "microcopy"], personality: "ใจเย็น",
+  const PERSONA = { prompt: "คุณคือ Nina2 นักออกแบบ", expertise: ["UI", "microcopy"], personality: "ใจเย็น",
     language: "ไทย", rules: "1. ถามก่อนเดา", skills: ["deep-research", "made-up-skill"], tools: ["WebSearch", "NotATool"] };
   const stub = http.createServer((req, res) => {
     const chunks = [];
@@ -474,7 +474,7 @@ test("routes: /copilot/settings + the three copilot routes run one-shot on the p
       let content = "?";
       if (user.includes("Design a complete persona")) content = "Here it is:\n```json\n" + JSON.stringify(PERSONA) + "\n```";
       else if (user.includes("Draft a workflow")) content = JSON.stringify({ name: "Morning AI news", steps: ["ค้นข่าว AI", "สรุปข่าว", "ส่งเข้า Telegram"] });
-      else if (user.includes("OFFICE CONTEXT")) content = "1) สรุป: ส่งข่าวทุกเช้า\n2) ใช้ skill deep-research + tool WebSearch\n4) มอบหมายให้ mali";
+      else if (user.includes("OFFICE CONTEXT")) content = "1) สรุป: ส่งข่าวทุกเช้า\n2) ใช้ skill deep-research + tool WebSearch\n4) มอบหมายให้ nina";
       send(200, { id: "x", object: "chat.completion", model: body.model, choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }] });
     });
   });
@@ -487,7 +487,7 @@ test("routes: /copilot/settings + the three copilot routes run one-shot on the p
       main: { name: "Shino", role: "Director", prompt: "", provider: "claude", model: "claude-fable-5-1",
         persona: { language: "Thai, English on Technical words and code.", rules: "1. มอบหมายงานให้ Lead" } },
       ceo: { name: "CEO", role: "Owner", prompt: "" },
-      mali: { name: "Mali", role: "Designer", prompt: "", provider: "lmstudio", model: "stub-model" },
+      nina: { name: "Nina", role: "Designer", prompt: "", provider: "lmstudio", model: "stub-model" },
     },
     apiKeys: {}, roles: ["Director", "Designer"], tools: [], mcpServers: {}, places: {}, triggers: [],
     providerConfig: { lmstudio: { connected: true, baseUrl: stubBase }, openrouter: { token: "sk-or-e2e-secret-123456", connected: true } },
@@ -529,7 +529,7 @@ test("routes: /copilot/settings + the three copilot routes run one-shot on the p
   assert.deepStrictEqual([r.status, j.ok, j.effective.source, j.effective.provider], [200, true, "copilot", "lmstudio"]);
 
   // ✨ POST /assist/prompt → the stub's persona JSON (validated) + brain
-  r = await post("/assist/prompt", { name: "Mali2", role: "Designer", brief: "นักออกแบบ UI ที่ใส่ใจ microcopy" });
+  r = await post("/assist/prompt", { name: "Nina2", role: "Designer", brief: "นักออกแบบ UI ที่ใส่ใจ microcopy" });
   assert.strictEqual(r.status, 200);
   j = await r.json();
   assert.strictEqual(j.prompt, PERSONA.prompt);
@@ -561,7 +561,7 @@ test("routes: /copilot/settings + the three copilot routes run one-shot on the p
   assert.match(j.analysis, /deep-research/);
   assert.strictEqual(j.brain.model, "stub-model");
   const user = seen[seen.length - 1].body.messages[1].content;
-  for (const s2 of ["As the Director", "OFFICE CONTEXT", "- mali: Mali — Designer", "- deep-research: Methodical", "WebSearch", "สรุปข่าว AI"])
+  for (const s2 of ["As the Director", "OFFICE CONTEXT", "- nina: Nina — Designer", "- deep-research: Methodical", "WebSearch", "สรุปข่าว AI"])
     assert.ok(user.includes(s2), "analyze prompt is missing " + s2);
   assert.ok(!user.includes("- ceo:"), "the owner is not an assignee");
 

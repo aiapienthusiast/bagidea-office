@@ -154,9 +154,9 @@ test("validFallbackProvider: builtins, local ids, configured customs", () => {
 });
 
 test("cleanFallbackModel: real model ids pass intact, shell metacharacters are refused", () => {
-  const ok = ["", "qwen3.8-27b-abliterated-mtp@bf16", "openai/gpt-oss-20b:free", "~anthropic/claude-opus-latest",
+  const ok = ["", "qwen3-8b-instruct@bf16", "openai/gpt-oss-20b:free", "~anthropic/claude-opus-latest",
     "accounts/fireworks/models/llama-v3p3-70b-instruct", "llama3.1:8b-instruct-q4_K_M", "sonnet[1m]",
-    "qwen3.8-27b-twin-turbo-fable-cold-fusion-709-l-uncensored-ultraoptimised-mtp-curated"];   // 84 chars (LM Studio)
+    "example-org-local-model-27b-instruct-chatmodel-mtp-q4-k-m-with-a-long-name-v2"];   // 79 chars (LM Studio)
   for (const m of ok) assert.strictEqual(fb.cleanFallbackModel(m), m);
   assert.strictEqual(fb.cleanFallbackModel("  gpt-4.1  "), "gpt-4.1");
   assert.strictEqual(fb.cleanFallbackModel(undefined), "");

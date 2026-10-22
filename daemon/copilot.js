@@ -44,7 +44,7 @@ const DEFAULT_MAX_TOKENS = 4096;
 const MAX_TOKENS_CAP = 16384;          // same clamp as the office proxy (most OpenAI-compat models stop there)
 const TEMPERATURE = 0.3;
 // Local servers (LM Studio / Ollama) often run reasoning models (Qwen3, Agents-A1 …) that
-// think before they answer — on the owner's PC Agents-A1 spent a whole 1,500-token budget
+// think before they answer — in testing Agents-A1 spent a whole 1,500-token budget
 // thinking (finish_reason=length, empty reply). Tokens cost nothing there: a local brain always
 // gets at least LOCAL_MIN_TOKENS, and a caller's localTimeoutMs (the time to think at ~40 tok/s).
 const LOCAL_MIN_TOKENS = 8192;
