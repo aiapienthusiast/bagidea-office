@@ -102,6 +102,14 @@ test("Atlas Cloud routes to the built-in proxy", () => {
   assert.deepStrictEqual(r.modelArgs, ["--model", "openai/gpt-4.1-mini"]);
 });
 
+test("Cheaper Inference routes to the built-in proxy", () => {
+  const reg = { providerConfig: { cheaperinference: { token: "ci-key" } } };
+  const r = resolve("cheaperinference", "gpt-5.4-mini", reg, { proxyBase: "http://127.0.0.1:8787" });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:8787/proxy/cheaperinference");
+  assert.deepStrictEqual(r.modelArgs, ["--model", "gpt-5.4-mini"]);
+});
+
 test("custom anthropic-kind provider routes direct from providerConfig", () => {
   const reg = { providerConfig: { acme: { kind: "anthropic", baseUrl: "https://acme.ai/anthropic", token: "k", model: "acme-1" } } };
   const r = resolve("acme", "", reg, { proxyBase: "http://127.0.0.1:8787" });

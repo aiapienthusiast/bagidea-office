@@ -93,6 +93,11 @@ const PROVIDERS = {
     baseUrl: "https://api.atlascloud.ai/v1",
     models: ["openai/gpt-4.1-mini"],
   },
+  cheaperinference: {
+    label: "Cheaper Inference", format: "openai", needsProxy: true,
+    baseUrl: "https://api.cheaperinference.com/v1",
+    models: ["gpt-5.4-mini", "claude-sonnet-5", "deepseek-v4-flash"],
+  },
   gemini: {
     label: "Gemini", format: "openai", needsProxy: true, baseUrl: null,
     models: ["gemini-2.5-pro", "gemini-2.5-flash"],

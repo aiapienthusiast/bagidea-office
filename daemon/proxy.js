@@ -30,6 +30,8 @@ const UPSTREAM = {
             fallbackModel: "gpt-4o-mini" },
   atlascloud: { url: "https://api.atlascloud.ai/v1/chat/completions",
                 fallbackModel: "openai/gpt-4.1-mini" },
+  cheaperinference: { url: "https://api.cheaperinference.com/v1/chat/completions",
+                      fallbackModel: "gpt-5.4-mini" },
   gemini: { url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
             key: "GEMINI_API_KEY", fallbackModel: "gemini-2.5-flash" },
   openrouter: { url: "https://openrouter.ai/api/v1/chat/completions", fallbackModel: "" },

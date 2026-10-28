@@ -254,6 +254,14 @@ test("upstreamFor: Atlas Cloud uses its API endpoint and provider token", () => 
   assert.strictEqual(u.fallbackModel, "openai/gpt-4.1-mini");
 });
 
+test("upstreamFor: Cheaper Inference uses its API endpoint and provider token", () => {
+  const u = upstreamFor("cheaperinference", { providerConfig: { cheaperinference: { token: "ci-key" } } });
+  assert.strictEqual(u.chat, "https://api.cheaperinference.com/v1/chat/completions");
+  assert.strictEqual(u.models, "https://api.cheaperinference.com/v1/models");
+  assert.strictEqual(u.key, "ci-key");
+  assert.strictEqual(u.fallbackModel, "gpt-5.4-mini");
+});
+
 test("upstreamFor: custom provider uses providerConfig baseUrl + token", () => {
   const u = upstreamFor("foo", { providerConfig: { foo: { baseUrl: "https://foo.ai/v1", token: "k" } } });
   assert.strictEqual(u.chat, "https://foo.ai/v1/chat/completions");

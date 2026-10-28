@@ -85,6 +85,7 @@ The office ships a **built-in, zero-dependency proxy that translates Anthropic â
 |---|---|---|
 | **OpenAI** | `gpt-4o` | bare name |
 | **Atlas Cloud** | `openai/gpt-4.1-mini` | **`vendor/model`** |
+| **Cheaper Inference** | `gpt-5.4-mini` | bare name |
 | **Gemini** (Google) | `gemini-2.5-flash` | bare name |
 | **OpenRouter** | `openai/gpt-4o`, `anthropic/claude-â€¦` | **`vendor/model`** |
 | **NVIDIA build** | `meta/llama-3.3-70b-instruct` | **`vendor/model`** |
